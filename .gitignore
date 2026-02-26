@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.Python
+env/
+venv/
+.env
+
+# Jupyter Notebooks
+.ipynb_checkpoints/
+*.ipynb_checkpoints/
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# Data
+*.csv
+*.tsv
+*.txt
+*.h5ad
+*.h5
+data/
+datos/
+
+# Temporal files
+.DS_Store
+*.log
+*.bak
+*.swp
