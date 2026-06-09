@@ -22,10 +22,12 @@ venv/
 *.h5ad
 *.h5
 data/
-datos/
 
 # Temporal files
 .DS_Store
 *.log
 *.bak
 *.swp
+
+# Folders
+Anna_script/
