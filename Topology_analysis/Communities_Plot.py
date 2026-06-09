@@ -1,13 +1,12 @@
 '''
 Author: Jaime Martínez Cazón
+Adapted for direct gene names and unparquet edge lists.
 
 Description:
-This script creates a detailed visualization of the S. cerevisiae Gene
-Regulatory Network, with nodes grouped and colored by their detected community.
-The layout algorithm places communities as distinct circular clusters and uses
-an iterative force-based method to prevent overlaps. The visualization is
-rendered in layers to clearly distinguish intra-community and inter-community
-connections.
+Creates a detailed visualization of a Gene Regulatory Network, with nodes 
+grouped and colored by their detected community (Louvain algorithm).
+Uses a force-based circular layout to prevent overlaps and renders 
+intra/inter-community edges in separate layers.
 '''
 
 import os
@@ -24,11 +23,11 @@ from matplotlib.colors import LinearSegmentedColormap
 # =============================================================================
 # SETUP: FILE PATHS AND PARAMETERS
 # =============================================================================
-DATA_DIR = "data"
-EDGE_LIST_PATH = os.path.join(DATA_DIR, "giantC_edge_list.csv")
+script_dir = os.path.dirname(os.path.abspath(__file__))
+EDGE_LIST_PATH = os.path.join(script_dir, "../data/celloracle_data/base_GRN_edge_list.parquet")
 
-# Configuration for visualization
-COMMUNITY_TO_EXCLUDE = 8  # Community ID to exclude from the plot
+# Configuration for visualization (Set to None to include all communities)
+COMMUNITY_TO_EXCLUDE = None  
 
 # =============================================================================
 # UTILITY AND ANALYSIS FUNCTIONS
@@ -37,15 +36,14 @@ COMMUNITY_TO_EXCLUDE = 8  # Community ID to exclude from the plot
 def load_and_partition_network(edge_path):
     """Loads the network and detects communities using the Louvain algorithm."""
     print("Step 1: Loading network and detecting communities...")
-    edge_list = pd.read_csv(edge_path)
+    edge_list = pd.read_parquet(edge_path)
     G = nx.from_pandas_edgelist(
-        edge_list, source='Node 1', target='Node 2', create_using=nx.Graph()
+        edge_list, source='source', target='target', create_using=nx.Graph()
     )
     
     partition_dict = community_louvain.best_partition(G, random_state=42)
     num_communities = len(set(partition_dict.values()))
     
-    # Group nodes by community ID
     communities = {i: {n for n, cid in partition_dict.items() if cid == i} 
                    for i in range(num_communities)}
                    
@@ -77,26 +75,20 @@ def resolve_overlaps(positions, radii, iterations=100, padding=0.1):
 
 
 def calculate_community_layout(communities):
-    """
-    Calculates node positions by placing them within non-overlapping community circles.
-    """
+    """Calculates node positions within non-overlapping community circles."""
     print("Step 2: Calculating network layout...")
     nodes_per_comm = {cid: len(nodes) for cid, nodes in communities.items()}
     
-    # Calculate radii for community circles based on the number of nodes
     base_radius, scale_factor = 0.05, 0.08
     comm_radii = {cid: base_radius + scale_factor * np.sqrt(count) 
                   for cid, count in nodes_per_comm.items()}
     
-    # Use a meta-graph to position the community centers
     meta_graph = nx.Graph()
     meta_graph.add_nodes_from(communities.keys())
     initial_pos = nx.spring_layout(meta_graph, seed=42, k=0.8, iterations=200)
     
-    # Adjust community centers to avoid overlap
     comm_pos = resolve_overlaps(initial_pos, comm_radii, padding=0.2)
     
-    # Position individual nodes randomly within their community circle
     node_pos = {}
     for cid, nodes in communities.items():
         center_x, center_y = comm_pos[cid]
@@ -112,14 +104,11 @@ def calculate_community_layout(communities):
 
 
 def create_network_visualization(G, communities, partition, node_pos, comm_pos, comm_radii):
-    """
-    Generates and displays the final network visualization.
-    """
+    """Generates and displays the final network visualization."""
     print("Step 3: Generating final visualization...")
     fig, ax = plt.subplots(figsize=(24, 24))
     num_communities = len(communities)
 
-    # --- Prepare colors and edge widths ---
     paper_colors = ['#9467bd', '#bcbd22', '#ff7f0e', '#17becf', '#d62728']
     custom_cmap = LinearSegmentedColormap.from_list("paper_palette", paper_colors, N=num_communities)
     
@@ -128,18 +117,14 @@ def create_network_visualization(G, communities, partition, node_pos, comm_pos, 
     max_log_weight = max(inter_comm_weights) if inter_comm_weights else 1.0
     scaled_widths = [(16.0 * w / max_log_weight) for w in inter_comm_weights]
 
-    # --- Draw the network in layers ---
-    
     # Layer 1 & 2: Community circles and internal edges
     for cid, nodes in communities.items():
         if cid == COMMUNITY_TO_EXCLUDE: continue
         color = custom_cmap(cid / (num_communities - 1))
         
-        # Background circle for the community
         circle = Circle(comm_pos[cid], comm_radii[cid], color=color, alpha=0.15, zorder=0)
         ax.add_patch(circle)
         
-        # Internal edges
         nx.draw_networkx_edges(G.subgraph(nodes), node_pos, ax=ax, edge_color=color, alpha=0.5, width=0.8)
 
     # Layer 3: Inter-community edges
@@ -165,8 +150,11 @@ def create_network_visualization(G, communities, partition, node_pos, comm_pos, 
                       for i in sorted(communities.keys()) if i != COMMUNITY_TO_EXCLUDE]
     ax.legend(handles=legend_handles, title="Communities", loc="best", fontsize=14, title_fontsize=16)
 
-    # Final plot adjustments
-    ax.set_title(f'Network Visualization by Community (Excluding Community {COMMUNITY_TO_EXCLUDE})', fontsize=28, pad=20)
+    title_text = 'Network Visualization by Community'
+    if COMMUNITY_TO_EXCLUDE is not None:
+        title_text += f' (Excluding Community {COMMUNITY_TO_EXCLUDE})'
+        
+    ax.set_title(title_text, fontsize=28, pad=20)
     ax.set_aspect('equal', adjustable='box')
     ax.set_frame_on(False)
     ax.tick_params(left=False, bottom=False, labelleft=False, labelbottom=False)
@@ -178,12 +166,9 @@ def create_network_visualization(G, communities, partition, node_pos, comm_pos, 
 # =============================================================================
 
 if __name__ == "__main__":
-    # 1. Load data and detect communities
     G_main, communities_main, partition_main = load_and_partition_network(EDGE_LIST_PATH)
     
-    # 2. Calculate node and community positions
     node_positions, comm_positions, comm_radii_map = calculate_community_layout(communities_main)
     
-    # 3. Generate the final plot
     create_network_visualization(G_main, communities_main, partition_main, 
                                  node_positions, comm_positions, comm_radii_map)
