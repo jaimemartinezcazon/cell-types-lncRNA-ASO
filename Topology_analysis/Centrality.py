@@ -1,18 +1,12 @@
 '''
 Author: Jaime Martínez Cazón
+Adapted for direct gene names and unparquet edge lists.
 
 Description:
-This script performs a comprehensive centrality analysis on the S. cerevisiae
-Gene Regulatory Network. It calculates several key centrality measures:
-- Degree Centrality (in- and out-degree)
-- Betweenness Centrality
-- Closeness Centrality (in- and out-closeness)
-- PageRank Centrality
-
-The script then identifies the top N most central nodes for each measure and
-cross-references them with functional annotations, including a list of 
-candidate genes, known transcription factors (TFs), and their location within 
-the network's bow-tie structure (IN, OUT, SCC, OTHERS).
+Performs a comprehensive centrality analysis on a Gene Regulatory Network.
+Calculates In/Out Degree, Betweenness, In/Out Closeness, and PageRank.
+Identifies the top N most central nodes and cross-references them with 
+functional annotations (TFs, candidates, bow-tie structure).
 '''
 
 import os
@@ -20,106 +14,86 @@ import pandas as pd
 import numpy as np
 import networkx as nx
 from pathlib import Path
+from collections import defaultdict
 
 # =============================================================================
 # SETUP: FILE PATHS AND PARAMETERS
 # =============================================================================
-BASE_DATA_PATH = Path("data")
-OUTPUT_DIR = Path("centrality_output")
-N_TOP = 10  # Number of top nodes to analyze for each metric
+script_dir = Path(__file__).resolve().parent
+
+EDGE_LIST_PATH = script_dir / "../data/celloracle_data/base_GRN_edge_list.parquet"
+BOWTIE_DIR = script_dir / "../data/GRN_data/bow_tie_components"
+ANNOTATIONS_DIR = script_dir / "../data"
+OUTPUT_DIR = script_dir / "../data/GRN_data/centrality_output"
+
+N_TOP = 10  
 
 # =============================================================================
 # DATA LOADING AND PREPARATION
 # =============================================================================
 
 def load_network_and_annotations():
-    """
-    Loads the main network graph and all annotation files (TFs, candidates, bow-tie).
-    
-    Returns:
-        tuple: A tuple containing the graph and various data lookups.
-    """
+    """Loads the main network graph and all annotation files."""
     print("Loading all required data...")
-    # Create the graph
-    edge_list_path = BASE_DATA_PATH / "giantC_edge_list.csv"
-    edge_list = pd.read_csv(edge_list_path)
-    G = nx.from_pandas_edgelist(edge_list, 'Node 1', 'Node 2', create_using=nx.DiGraph())
     
-    # Node ID to gene name mapping
-    nodes_id_path = BASE_DATA_PATH / "giantC_nodes_id.csv"
-    nodes_id_df = pd.read_csv(nodes_id_path)
-    id_to_name = dict(zip(nodes_id_df["ID"], nodes_id_df["Gene"]))
-
-    # Candidate genes
+    edge_list = pd.read_parquet(EDGE_LIST_PATH)
+    G = nx.from_pandas_edgelist(edge_list, 'source', 'target', create_using=nx.DiGraph())
+    
     try:
-        candidates_path = BASE_DATA_PATH / "Candidates_list.csv" # Adjusted filename
-        candidates_genes = set(pd.read_csv(candidates_path)["Gene"].dropna())
+        candidates_path = ANNOTATIONS_DIR / "Candidates_list.csv"
+        candidates_genes = set(pd.read_csv(candidates_path).iloc[:, 0].dropna().astype(str))
     except FileNotFoundError:
         print("Warning: Candidate list file not found. Skipping candidate analysis.")
         candidates_genes = set()
 
-    # Transcription Factors
     try:
-        tfs_path = BASE_DATA_PATH / "TFs_network.csv"
-        tfs_ids = set(pd.read_csv(tfs_path)["ID"].dropna())
+        tfs_path = ANNOTATIONS_DIR / "TFs_network.csv"
+        tfs_genes = set(pd.read_csv(tfs_path).iloc[:, 0].dropna().astype(str))
     except FileNotFoundError:
         print("Warning: TF list file not found. Skipping TF analysis.")
-        tfs_ids = set()
+        tfs_genes = set()
 
-    # Bow-tie sector mapping
     node_sector_map = {}
     for sector in ['IN', 'SCC', 'OUT', 'OTHERS']:
         try:
-            sector_path = BASE_DATA_PATH / "Bow-Tie" / f"{sector.lower()}_sector_nodes.csv"
-            sector_df = pd.read_csv(sector_path)
-            for node_id in sector_df["ID"]:
-                node_sector_map[node_id] = sector
+            sector_path = BOWTIE_DIR / f"{sector.lower()}_sector_nodes.csv"
+            sector_nodes = pd.read_csv(sector_path).iloc[:, 0].dropna().astype(str)
+            for node in sector_nodes:
+                node_sector_map[node] = sector
         except FileNotFoundError:
             print(f"Warning: Bow-tie file for '{sector}' not found.")
 
-    print("Data loading complete.")
-    return G, nodes_id_df, id_to_name, candidates_genes, tfs_ids, node_sector_map
+    print(f"Data loading complete. Nodes: {G.number_of_nodes()}, Edges: {G.number_of_edges()}")
+    return G, candidates_genes, tfs_genes, node_sector_map
 
 # =============================================================================
 # CENTRALITY CALCULATION
 # =============================================================================
 
-def calculate_centrality_measures(G, nodes_df, id_to_name):
-    """
-    Calculates all centrality measures and returns them in a single DataFrame.
-    
-    Args:
-        G (nx.DiGraph): The network graph.
-        nodes_df (pd.DataFrame): DataFrame with node IDs and gene names.
-        id_to_name (dict): Mapping from node ID to gene name.
-
-    Returns:
-        pd.DataFrame: A DataFrame containing all centrality scores for each node.
-    """
+def calculate_centrality_measures(G):
+    """Calculates all centrality measures and returns them in a DataFrame."""
     print("\nCalculating centrality measures...")
-    centrality_df = nodes_df.copy()
+    
+    nodes = list(G.nodes())
+    centrality_df = pd.DataFrame({"Gene_Name": nodes})
 
-    # All centrality calculations are unweighted
     print("  - Degree (In/Out)...")
-    centrality_df["In_Degree"] = centrality_df["ID"].map(dict(G.in_degree())).fillna(0).astype(int)
-    centrality_df["Out_Degree"] = centrality_df["ID"].map(dict(G.out_degree())).fillna(0).astype(int)
+    centrality_df["In_Degree"] = centrality_df["Gene_Name"].map(dict(G.in_degree())).fillna(0).astype(int)
+    centrality_df["Out_Degree"] = centrality_df["Gene_Name"].map(dict(G.out_degree())).fillna(0).astype(int)
 
-    print("  - Betweenness Centrality...")
+    print("  - Betweenness Centrality (This may take a while for large networks)...")
     betweenness = nx.betweenness_centrality(G, weight=None)
-    centrality_df["Betweenness"] = centrality_df["ID"].map(betweenness).fillna(0)
+    centrality_df["Betweenness"] = centrality_df["Gene_Name"].map(betweenness).fillna(0)
 
     print("  - Closeness Centrality (In/Out)...")
     closeness_out = nx.closeness_centrality(G)
-    closeness_in = nx.closeness_centrality(G.reverse()) # In-closeness on reversed graph
-    centrality_df["Closeness_Out"] = centrality_df["ID"].map(closeness_out).fillna(0)
-    centrality_df["Closeness_In"] = centrality_df["ID"].map(closeness_in).fillna(0)
+    closeness_in = nx.closeness_centrality(G.reverse()) 
+    centrality_df["Closeness_Out"] = centrality_df["Gene_Name"].map(closeness_out).fillna(0)
+    centrality_df["Closeness_In"] = centrality_df["Gene_Name"].map(closeness_in).fillna(0)
 
     print("  - PageRank Centrality...")
     pagerank = nx.pagerank(G, weight=None)
-    centrality_df["PageRank"] = centrality_df["ID"].map(pagerank).fillna(0)
-    
-    # Ensure Gene_Name column exists
-    centrality_df["Gene_Name"] = centrality_df["ID"].map(id_to_name)
+    centrality_df["PageRank"] = centrality_df["Gene_Name"].map(pagerank).fillna(0)
     
     print("Centrality calculations complete.")
     return centrality_df
@@ -129,35 +103,32 @@ def calculate_centrality_measures(G, nodes_df, id_to_name):
 # =============================================================================
 
 def analyze_top_nodes(centrality_df, measure, annotations):
-    """
-    Analyzes and prints a report for the top N nodes for a given centrality measure.
-    """
-    candidates_genes, tfs_ids, node_sector_map = annotations
+    """Analyzes and prints a report for the top N nodes for a given measure."""
+    candidates_genes, tfs_genes, node_sector_map = annotations
     
     print(f"\n--- Analysis for Top {N_TOP} nodes by {measure} ---")
     
     top_nodes = centrality_df.sort_values(by=measure, ascending=False).head(N_TOP)
     
-    print(f"{'ID':<6} | {'Gene Name':<12} | {measure:<15} | {'Sector':<8} | {'Candidate':<9} | {'TF':<3}")
-    print("-" * 75)
+    print(f"{'Gene Name':<15} | {measure:<15} | {'Sector':<8} | {'Candidate':<9} | {'TF':<3}")
+    print("-" * 65)
     
     sector_counts = defaultdict(int)
     
     for _, row in top_nodes.iterrows():
-        node_id = row["ID"]
         gene_name = row["Gene_Name"]
         score = row[measure]
         
-        sector = node_sector_map.get(node_id, "Unknown")
+        sector = node_sector_map.get(gene_name, "Unknown")
         is_candidate = "Yes" if gene_name in candidates_genes else "No"
-        is_tf = "Yes" if node_id in tfs_ids else "No"
+        is_tf = "Yes" if gene_name in tfs_genes else "No"
         
         sector_counts[sector] += 1
         
         score_str = f"{score:.6f}" if isinstance(score, float) else str(score)
-        print(f"{node_id:<6} | {gene_name:<12} | {score_str:<15} | {sector:<8} | {is_candidate:<9} | {is_tf:<3}")
+        print(f"{gene_name:<15} | {score_str:<15} | {sector:<8} | {is_candidate:<9} | {is_tf:<3}")
         
-    print("-" * 75)
+    print("-" * 65)
     print("Summary for this group:")
     for sector, count in sorted(sector_counts.items()):
         print(f"  - Sector '{sector}': {count}/{N_TOP} nodes")
@@ -167,24 +138,20 @@ def analyze_top_nodes(centrality_df, measure, annotations):
 # =============================================================================
 
 if __name__ == "__main__":
-    # 1. Load all data
     try:
-        G_main, nodes_df_main, id_map, candidates, tfs, sector_map = load_network_and_annotations()
+        G_main, candidates, tfs, sector_map = load_network_and_annotations()
         annotations_tuple = (candidates, tfs, sector_map)
-    except FileNotFoundError as e:
-        print(f"Fatal Error: A required data file was not found. {e}")
+    except Exception as e:
+        print(f"Fatal Error during data loading: {e}")
         exit()
 
-    # 2. Calculate all centrality measures
-    centrality_results_df = calculate_centrality_measures(G_main, nodes_df_main, id_map)
+    centrality_results_df = calculate_centrality_measures(G_main)
     
-    # 3. Save the full centrality data to a CSV
-    OUTPUT_DIR.mkdir(exist_ok=True)
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     output_path = OUTPUT_DIR / "full_centrality_analysis.csv"
     centrality_results_df.to_csv(output_path, index=False, float_format='%.8f')
     print(f"\nFull centrality data saved to: {output_path}")
 
-    # 4. Analyze and report on top nodes for each measure
     centrality_measures = [
         "In_Degree", "Out_Degree", "Betweenness", 
         "Closeness_In", "Closeness_Out", "PageRank"

@@ -13,7 +13,7 @@ import os
 import pandas as pd
 import numpy as np
 import networkx as nx
-import community as community_louvain
+from networkx.algorithms import community as nx_comm
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 from matplotlib.patches import Circle
@@ -34,18 +34,20 @@ COMMUNITY_TO_EXCLUDE = None
 # =============================================================================
 
 def load_and_partition_network(edge_path):
-    """Loads the network and detects communities using the Louvain algorithm."""
+    """Loads the network and detects communities using NetworkX's Louvain algorithm."""
     print("Step 1: Loading network and detecting communities...")
     edge_list = pd.read_parquet(edge_path)
     G = nx.from_pandas_edgelist(
         edge_list, source='source', target='target', create_using=nx.Graph()
     )
     
-    partition_dict = community_louvain.best_partition(G, random_state=42)
-    num_communities = len(set(partition_dict.values()))
+    # Use NetworkX built-in Louvain
+    communities_list = nx_comm.louvain_communities(G, seed=42)
+    num_communities = len(communities_list)
     
-    communities = {i: {n for n, cid in partition_dict.items() if cid == i} 
-                   for i in range(num_communities)}
+    # Reformat to match dictionary structures needed for plotting
+    communities = {i: set(nodes) for i, nodes in enumerate(communities_list)}
+    partition_dict = {node: cid for cid, nodes in communities.items() for node in nodes}
                    
     print(f"Found {num_communities} communities.")
     return G, communities, partition_dict
@@ -120,7 +122,10 @@ def create_network_visualization(G, communities, partition, node_pos, comm_pos, 
     # Layer 1 & 2: Community circles and internal edges
     for cid, nodes in communities.items():
         if cid == COMMUNITY_TO_EXCLUDE: continue
-        color = custom_cmap(cid / (num_communities - 1))
+        
+        # Avoid division by zero if there's only 1 community
+        color_idx = cid / (num_communities - 1) if num_communities > 1 else 0
+        color = custom_cmap(color_idx)
         
         circle = Circle(comm_pos[cid], comm_radii[cid], color=color, alpha=0.15, zorder=0)
         ax.add_patch(circle)
@@ -140,13 +145,16 @@ def create_network_visualization(G, communities, partition, node_pos, comm_pos, 
     # Layer 4: Nodes
     for cid, nodes in communities.items():
         if cid == COMMUNITY_TO_EXCLUDE: continue
-        color = custom_cmap(cid / (num_communities - 1))
+        
+        color_idx = cid / (num_communities - 1) if num_communities > 1 else 0
+        color = custom_cmap(color_idx)
+        
         nx.draw_networkx_nodes(G, node_pos, nodelist=list(nodes), ax=ax, node_size=15, 
                                node_color=[color], linewidths=0)
 
     # Layer 5: Legend
     legend_handles = [Line2D([0], [0], marker='o', color='w', label=f"Community {i} ({len(communities[i])} nodes)",
-                      markerfacecolor=custom_cmap(i / (num_communities - 1)), markersize=15)
+                      markerfacecolor=custom_cmap(i / (num_communities - 1) if num_communities > 1 else 0), markersize=15)
                       for i in sorted(communities.keys()) if i != COMMUNITY_TO_EXCLUDE]
     ax.legend(handles=legend_handles, title="Communities", loc="best", fontsize=14, title_fontsize=16)
 

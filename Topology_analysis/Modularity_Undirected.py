@@ -1,17 +1,14 @@
 '''
 Author: Jaime Martínez Cazón
+Adapted for direct gene names, unparquet edge lists, and NetworkX native Louvain.
 
 Description:
-This script performs a comprehensive community structure analysis of the 
-S. cerevisiae Gene Regulatory Network. The workflow includes:
-1.  Detecting communities using the Louvain algorithm on the undirected version
-    of the network.
-2.  Evaluating the statistical significance of the detected community structure
-    (modularity) and individual community properties (clustering, conductance)
-    by comparing them against an ensemble of null models.
-3.  Locating a predefined list of candidate genes within the detected communities.
-4.  Mapping the distribution of each community across the network's global
-    bow-tie components (IN, OUT, SCC, OTHERS).
+Performs a comprehensive community structure analysis of a Gene Regulatory Network.
+1. Detects communities using the native NetworkX Louvain algorithm.
+2. Evaluates the statistical significance of global modularity and individual 
+   community properties (clustering, conductance) against null models using Multiprocessing.
+3. Locates a predefined list of candidate genes within the detected communities.
+4. Maps the distribution of each community across the network's bow-tie components.
 '''
 
 import os
@@ -19,17 +16,29 @@ import glob
 import pandas as pd
 import numpy as np
 import networkx as nx
-import community as community_louvain
+from networkx.algorithms import community as nx_comm
 from tqdm import tqdm
+import multiprocessing as mp
 
 # =============================================================================
 # SETUP: FILE PATHS AND PARAMETERS
 # =============================================================================
-DATA_DIR = "data"
-EDGE_LIST_PATH = os.path.join(DATA_DIR, "giantC_edge_list.csv")
-NODES_ID_PATH = os.path.join(DATA_DIR, "giantC_nodes_id.csv")
-NULL_MODELS_DIR = os.path.join(DATA_DIR, "Null Models")
-BOWTIE_DIR = os.path.join(DATA_DIR, "Bow-Tie")
+script_dir = os.path.dirname(os.path.abspath(__file__))
+
+EDGE_LIST_PATH = os.path.join(script_dir, "../data/celloracle_data/base_GRN_edge_list.parquet")
+NULL_MODELS_DIR = os.path.join(script_dir, "../data/GRN_data/Null_Models")
+BOWTIE_DIR = os.path.join(script_dir, "../data/GRN_data/bow_tie_components")
+CANDIDATES_PATH = os.path.join(script_dir, "../data/Candidates_list.csv")
+OUTPUT_CSV_PATH = os.path.join(script_dir, "../data/GRN_data/community_significance_analysis.csv")
+
+NUM_CORES = max(1, mp.cpu_count() - 2)
+
+# Default candidates if CSV is not found
+DEFAULT_CANDIDATES = [
+    "YAL049C", "YBR208C", "YDL182W", "YFL014W", "YGR088W", "YGR180C", 
+    "YHL034C", "YJR096W", "YJR137C", "YKL001C", "YLR178C", "YML128C", 
+    "YMR105C", "YPL223C", "YPL226W"
+]
 
 # =============================================================================
 # UTILITY AND ANALYSIS FUNCTIONS
@@ -48,101 +57,66 @@ def calculate_empirical_p_value(real_value, null_distribution, direction='greate
 def load_network_and_detect_communities(edge_path):
     """Loads the network and detects communities using the Louvain algorithm."""
     print("Loading network and detecting communities...")
-    edge_list = pd.read_csv(edge_path)
-    G_original = nx.from_pandas_edgelist(edge_list, source='Node 1', target='Node 2', create_using=nx.DiGraph())
+    edge_list = pd.read_parquet(edge_path)
+    G_original = nx.from_pandas_edgelist(edge_list, source='source', target='target', create_using=nx.DiGraph())
     G_simple = G_original.to_undirected()
     
-    # Use a fixed random_state for reproducible results
-    partition = community_louvain.best_partition(G_simple, random_state=42)
-    num_communities = len(set(partition.values()))
-    print(f"Detection complete. Found {num_communities} communities.")
-    return G_original, G_simple, partition
+    # nx_comm natively returns a list of sets of nodes
+    communities_list = nx_comm.louvain_communities(G_simple, seed=42)
+    
+    # Map to format {node: community_id}
+    partition = {node: cid for cid, subset in enumerate(communities_list) for node in subset}
+    nodes_by_community = {cid: set(subset) for cid, subset in enumerate(communities_list)}
+    
+    print(f"Detection complete. Found {len(communities_list)} communities.")
+    return G_original, G_simple, partition, nodes_by_community, communities_list
 
 
-def analyze_global_modularity(G_simple, partition, null_models_dir):
-    """Analyzes the statistical significance of the global modularity."""
-    print("\n--- GLOBAL MODULARITY SIGNIFICANCE ANALYSIS ---")
-    real_modularity = community_louvain.modularity(partition, G_simple)
-    
-    null_modularity_list = []
-    null_model_files = glob.glob(os.path.join(null_models_dir, "*.graphml"))
-    
-    for file_path in tqdm(null_model_files, desc="Analyzing Global Modularity"):
-        G_null = nx.read_graphml(file_path, node_type=int).to_undirected()
-        partition_null = community_louvain.best_partition(G_null, random_state=42)
-        null_modularity_list.append(community_louvain.modularity(partition_null, G_null))
+def process_single_null_model(args):
+    """
+    Worker function to calculate modularity and community properties for a single null model.
+    Packed to be used with multiprocessing.Pool.
+    """
+    file_path, real_nodes_by_comm = args
+    try:
+        G_null = nx.read_graphml(file_path, node_type=str).to_undirected()
         
-    mean_modularity = np.mean(null_modularity_list)
-    std_modularity = np.std(null_modularity_list)
-    p_value = calculate_empirical_p_value(real_modularity, null_modularity_list, 'greater')
-    
-    print(f"Real Network Modularity:         {real_modularity:.4f}")
-    print(f"Null Model Modularity (Mean±SD): {mean_modularity:.4f} ± {std_modularity:.4f}")
-    print(f"Empirical P-value:               {p_value:.4f}")
-
-
-def analyze_community_properties(G_simple, partition, null_models_dir):
-    """Analyzes properties of each community against null models."""
-    print("\n--- INDIVIDUAL COMMUNITY SIGNIFICANCE ANALYSIS ---")
-    nodes_by_community = {cid: {n for n, c in partition.items() if c == cid} for cid in set(partition.values())}
-    
-    # Aggregate metrics from all null models first
-    null_metrics = {cid: {'clustering': [], 'conductance': []} for cid in nodes_by_community}
-    for file_path in tqdm(glob.glob(os.path.join(null_models_dir, "*.graphml")), desc="Analyzing Community Properties"):
-        G_null = nx.read_graphml(file_path, node_type=int).to_undirected()
-        for cid, nodes in nodes_by_community.items():
+        # 1. Global Modularity
+        null_comms = nx_comm.louvain_communities(G_null, seed=42)
+        modularity = nx_comm.modularity(G_null, null_comms)
+        
+        # 2. Individual Community Properties (evaluated on the real community structure)
+        comm_metrics = {}
+        for cid, nodes in real_nodes_by_comm.items():
             subgraph_null = G_null.subgraph(nodes)
             try:
-                null_metrics[cid]['clustering'].append(nx.average_clustering(subgraph_null))
-                null_metrics[cid]['conductance'].append(nx.conductance(G_null, nodes))
+                clust = nx.average_clustering(subgraph_null)
+                cond = nx.conductance(G_null, nodes)
             except (nx.NetworkXError, ZeroDivisionError):
-                null_metrics[cid]['clustering'].append(0.0)
-                null_metrics[cid]['conductance'].append(0.0)
-
-    # Now calculate and print results for each community
-    community_stats = []
-    for cid, nodes in sorted(nodes_by_community.items()):
-        subgraph_real = G_simple.subgraph(nodes)
-        real_clustering = nx.average_clustering(subgraph_real)
-        real_conductance = nx.conductance(G_simple, nodes)
-        
-        p_val_clust = calculate_empirical_p_value(real_clustering, null_metrics[cid]['clustering'], 'greater')
-        p_val_cond = calculate_empirical_p_value(real_conductance, null_metrics[cid]['conductance'], 'less')
-
-        stats = {
-            'Community_ID': cid, 'Num_Nodes': len(nodes), 'Density': nx.density(subgraph_real),
-            'Clustering_Real': real_clustering, 'Clustering_PValue': p_val_clust,
-            'Conductance_Real': real_conductance, 'Conductance_PValue': p_val_cond,
-        }
-        community_stats.append(stats)
-
-    summary_df = pd.DataFrame(community_stats).set_index('Community_ID')
-    print("\nSummary of Community Properties and Significance:")
-    print(summary_df.to_string(float_format="%.4f"))
-    summary_df.to_csv("community_significance_analysis.csv")
-    print("\nDetailed summary saved to 'community_significance_analysis.csv'")
+                clust, cond = 0.0, 0.0
+            
+            comm_metrics[cid] = {'clustering': clust, 'conductance': cond}
+            
+        return {'modularity': modularity, 'comm_metrics': comm_metrics}
+    except Exception:
+        return None
 
 
-def locate_candidate_genes(partition, nodes_id_path):
+def locate_candidate_genes(partition, candidates_path):
     """Locates a list of candidate genes within the detected communities."""
     print("\n--- LOCATING CANDIDATE GENES ---")
-    candidates_orf = ["YAL049C", "YBR208C", "YDL182W", "YFL014W", "YGR088W", "YGR180C", 
-                      "YHL034C", "YJR096W", "YJR137C", "YKL001C", "YLR178C", "YML128C", 
-                      "YMR105C", "YPL223C", "YPL226W"]
-    
-    nodes_id = pd.read_csv(nodes_id_path)
-    gene_to_id_map = {gene.upper(): id_val for id_val, gene in nodes_id.set_index('ID')['Gene'].items()}
+    try:
+        candidates = pd.read_csv(candidates_path).iloc[:, 0].dropna().astype(str).tolist()
+    except FileNotFoundError:
+        print("Candidate list CSV not found. Using default internal list.")
+        candidates = DEFAULT_CANDIDATES
 
-    for gene in candidates_orf:
-        node_id = gene_to_id_map.get(gene.upper())
-        if node_id is None:
-            print(f"- {gene}: Not found in network's node list.")
+    for gene in candidates:
+        community_id = partition.get(gene)
+        if community_id is not None:
+            print(f"- {gene}: Found in Community {community_id}.")
         else:
-            community_id = partition.get(node_id)
-            if community_id is not None:
-                print(f"- {gene}: Found in Community {community_id}.")
-            else:
-                print(f"- {gene}: Found in network (ID: {node_id}), but not in a community (isolated node).")
+            print(f"- {gene}: Not found in the main network component.")
 
 
 def map_communities_to_bowtie(partition, bowtie_dir):
@@ -152,9 +126,8 @@ def map_communities_to_bowtie(partition, bowtie_dir):
     for component in ['IN', 'SCC', 'OUT', 'OTHERS']:
         filepath = os.path.join(bowtie_dir, f"{component.lower()}_sector_nodes.csv")
         if os.path.exists(filepath):
-            bow_tie_sets[component] = set(pd.read_csv(filepath)['ID'])
+            bow_tie_sets[component] = set(pd.read_csv(filepath).iloc[:, 0].astype(str))
         else:
-            print(f"Warning: Bow-tie component file not found: {filepath}")
             bow_tie_sets[component] = set()
 
     nodes_by_community = {cid: {n for n, c in partition.items() if c == cid} for cid in set(partition.values())}
@@ -181,18 +154,79 @@ def map_communities_to_bowtie(partition, bowtie_dir):
 
 if __name__ == "__main__":
     # 1. Load network and detect communities
-    G_main, G_simple_main, partition_main = load_network_and_detect_communities(EDGE_LIST_PATH)
+    G_main, G_simple_main, partition_main, nodes_by_community_main, comms_list_main = load_network_and_detect_communities(EDGE_LIST_PATH)
     
-    # 2. Analyze global modularity significance
-    analyze_global_modularity(G_simple_main, partition_main, NULL_MODELS_DIR)
+    # Calculate real network metrics
+    real_modularity = nx_comm.modularity(G_simple_main, comms_list_main)
     
-    # 3. Analyze properties of each community
-    analyze_community_properties(G_simple_main, partition_main, NULL_MODELS_DIR)
+    # 2. Analyze Null Models in Parallel
+    null_model_files = glob.glob(os.path.join(NULL_MODELS_DIR, "*.graphml"))
     
-    # 4. Locate specific genes of interest
-    locate_candidate_genes(partition_main, NODES_ID_PATH)
+    if not null_model_files:
+        print(f"\nWarning: No null models found in {NULL_MODELS_DIR}. Skipping statistical significance tests.")
+    else:
+        print(f"\nAnalyzing Global Modularity and Community Properties on {len(null_model_files)} null models using {NUM_CORES} cores...")
+        
+        pool_args = [(f, nodes_by_community_main) for f in null_model_files]
+        null_modularity_list = []
+        null_metrics_agg = {cid: {'clustering': [], 'conductance': []} for cid in nodes_by_community_main}
+
+        with mp.Pool(processes=NUM_CORES) as pool:
+            for result in tqdm(pool.imap_unordered(process_single_null_model, pool_args), total=len(pool_args)):
+                if result is not None:
+                    null_modularity_list.append(result['modularity'])
+                    for cid, metrics in result['comm_metrics'].items():
+                        null_metrics_agg[cid]['clustering'].append(metrics['clustering'])
+                        null_metrics_agg[cid]['conductance'].append(metrics['conductance'])
+
+        # --- GLOBAL MODULARITY SIGNIFICANCE ---
+        print("\n--- GLOBAL MODULARITY SIGNIFICANCE ANALYSIS ---")
+        mean_modularity = np.mean(null_modularity_list)
+        std_modularity = np.std(null_modularity_list)
+        p_value_mod = calculate_empirical_p_value(real_modularity, null_modularity_list, 'greater')
+        
+        print(f"Real Network Modularity:         {real_modularity:.4f}")
+        print(f"Null Model Modularity (Mean±SD): {mean_modularity:.4f} ± {std_modularity:.4f}")
+        print(f"Empirical P-value:               {p_value_mod:.4f}")
+
+        # --- INDIVIDUAL COMMUNITY SIGNIFICANCE ---
+        print("\n--- INDIVIDUAL COMMUNITY SIGNIFICANCE ANALYSIS ---")
+        community_stats = []
+        for cid, nodes in sorted(nodes_by_community_main.items()):
+            subgraph_real = G_simple_main.subgraph(nodes)
+            
+            real_clustering = nx.average_clustering(subgraph_real)
+            try:
+                real_conductance = nx.conductance(G_simple_main, nodes)
+            except (nx.NetworkXError, ZeroDivisionError):
+                real_conductance = 0.0
+            
+            p_val_clust = calculate_empirical_p_value(real_clustering, null_metrics_agg[cid]['clustering'], 'greater')
+            p_val_cond = calculate_empirical_p_value(real_conductance, null_metrics_agg[cid]['conductance'], 'less')
+
+            stats = {
+                'Community_ID': cid, 
+                'Num_Nodes': len(nodes), 
+                'Density': nx.density(subgraph_real),
+                'Clustering_Real': real_clustering, 
+                'Clustering_PValue': p_val_clust,
+                'Conductance_Real': real_conductance, 
+                'Conductance_PValue': p_val_cond,
+            }
+            community_stats.append(stats)
+
+        summary_df = pd.DataFrame(community_stats).set_index('Community_ID')
+        print("\nSummary of Community Properties and Significance:")
+        print(summary_df.to_string(float_format="%.4f"))
+        
+        os.makedirs(os.path.dirname(OUTPUT_CSV_PATH), exist_ok=True)
+        summary_df.to_csv(OUTPUT_CSV_PATH)
+        print(f"\nDetailed summary saved to '{OUTPUT_CSV_PATH}'")
+
+    # 3. Locate specific genes of interest
+    locate_candidate_genes(partition_main, CANDIDATES_PATH)
     
-    # 5. Map communities to the bow-tie structure
+    # 4. Map communities to the bow-tie structure
     map_communities_to_bowtie(partition_main, BOWTIE_DIR)
     
     print("\n\nCommunity analysis complete.")
