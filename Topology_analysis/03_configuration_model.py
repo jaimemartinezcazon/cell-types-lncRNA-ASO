@@ -11,6 +11,7 @@ saved in GraphML format.
 '''
 
 import os
+from pathlib import Path
 import pandas as pd
 import networkx as nx
 from tqdm import tqdm
@@ -18,10 +19,21 @@ from tqdm import tqdm
 # =============================================================================
 # SETUP: CONFIGURATION PARAMETERS
 # =============================================================================
-script_dir = os.path.dirname(os.path.abspath(__file__))
+script_dir = Path(__file__).parent
 
-EDGE_LIST_PATH = os.path.join(script_dir, "../data/celloracle_data/base_GRN_edge_list.parquet")
-OUTPUT_DIR = os.path.join(script_dir, "../data/GRN_data/Null_Models")
+# Saved data directory
+INPUT_DATA_DIR = Path(script_dir / "../../data")
+
+# Output directories
+FIG_DIR = Path(script_dir / "figures")
+OUTPUT_DATA_DIR = Path(script_dir / "data_output")
+
+# Create directories if they do not exist
+FIG_DIR.mkdir(parents=True, exist_ok=True)
+OUTPUT_DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+# GRN edge list path
+EDGE_LIST_PATH = INPUT_DATA_DIR / "edge_list_to_analyze.parquet"
 
 NUM_NULL_MODELS = 1000  
 
@@ -31,8 +43,6 @@ NUM_NULL_MODELS = 1000
 
 def load_real_network(filepath):
     """Loads the real network from an edge list file."""
-    if not os.path.exists(filepath):
-        raise FileNotFoundError(f"The specified edge list file was not found at: {filepath}")
     
     print(f"Loading real network from: {filepath}")
     edge_list = pd.read_parquet(filepath)
@@ -55,7 +65,6 @@ def generate_null_models(G_real, num_models, output_dir):
     Generates and saves null models using the directed configuration model,
     preserving the original string node names.
     """
-    os.makedirs(output_dir, exist_ok=True)
     print(f"Generating {num_models} null models in directory: '{output_dir}'")
     
     # Fix the order of nodes to properly map degrees and relabel later
@@ -98,7 +107,7 @@ def generate_null_models(G_real, num_models, output_dir):
 if __name__ == "__main__":
     try:
         real_network = load_real_network(EDGE_LIST_PATH)
-        generate_null_models(real_network, NUM_NULL_MODELS, OUTPUT_DIR)
+        generate_null_models(real_network, NUM_NULL_MODELS, OUTPUT_DATA_DIR)
         
     except FileNotFoundError as e:
         print(f"Error: {e}")

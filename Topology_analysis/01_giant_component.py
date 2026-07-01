@@ -8,7 +8,7 @@ Regulatory Network. Its main purpose is to identify and extract the largest
 weakly connected component (the "giant component") of the network.
 
 The workflow includes:
-1.  Loading the full network from the original edge and node list files.
+1.  Loading the full network from the original edge list.
 2.  Analyzing the initial connectivity of the network (number of weakly and
     strongly connected components).
 3.  Extracting the subgraph corresponding to the giant component.
@@ -17,19 +17,31 @@ The workflow includes:
     single, connected network structure.
 '''
 
-import os
 import pandas as pd
 import networkx as nx
+from pathlib import Path
 
 # =============================================================================
 # SETUP: FILE PATHS
 # =============================================================================
-script_dir = os.path.dirname(os.path.abspath(__file__))
+script_dir = Path(__file__).parent
 
-RAW_EDGE_LIST_PATH = os.path.join(script_dir, "../data/celloracle_data/base_GRN_edge_list.parquet")
+# Saved data directory
+INPUT_DATA_DIR = Path(script_dir / "../../data")
+
+# Output directories
+FIG_DIR = Path(script_dir / "figures")
+OUTPUT_DATA_DIR = Path(script_dir / "data_output")
+
+# Create directories if they do not exist
+FIG_DIR.mkdir(parents=True, exist_ok=True)
+OUTPUT_DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+# GRN edge list path
+EDGE_LIST_PATH = INPUT_DATA_DIR / "edge_list_to_analyze.parquet"
 
 # Output paths for the filtered giant component data
-GC_EDGE_LIST_PATH = os.path.join(script_dir, "../data/celloracle_data/giantC_edge_list.parquet")
+GC_EDGE_LIST_PATH = OUTPUT_DATA_DIR / "giantC_edge_list.parquet"
 
 # =============================================================================
 # ANALYSIS AND PROCESSING FUNCTIONS
@@ -96,12 +108,12 @@ def extract_and_save_giant_component(G, raw_edge_list, gc_edge_path):
     ]
         
     # Save the filtered data to new Parquet files
-    #try:
-        #filtered_edges.to_parquet(gc_edge_path, index=False)
-        #print(f"Giant component edge list saved to: '{gc_edge_path}'")
+    try:
+        filtered_edges.to_parquet(gc_edge_path, index=False)
+        print(f"Giant component edge list saved to: '{gc_edge_path}'")
         
-    #except Exception as e:
-        #print(f"Error saving filtered files: {e}")
+    except Exception as e:
+        print(f"Error saving filtered files: {e}")
 
 # =============================================================================
 # MAIN EXECUTION
@@ -109,12 +121,12 @@ def extract_and_save_giant_component(G, raw_edge_list, gc_edge_path):
 
 if __name__ == "__main__":
     # 1. Load the full network and perform an initial analysis
-    full_graph = load_and_analyze_components(RAW_EDGE_LIST_PATH)
+    full_graph = load_and_analyze_components(EDGE_LIST_PATH)
     
     if full_graph:
         # 2. Load the raw data files as DataFrames
         try:
-            edge_list_df = pd.read_parquet(RAW_EDGE_LIST_PATH)
+            edge_list_df = pd.read_parquet(EDGE_LIST_PATH)
         
             # 3. Extract the giant component and save the new, filtered files
             extract_and_save_giant_component(

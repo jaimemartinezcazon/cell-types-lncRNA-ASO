@@ -10,6 +10,7 @@ and power-law fitting for C(k) vs. k.
 '''
 
 import os
+from pathlib import Path
 import numpy as np
 import pandas as pd
 import networkx as nx
@@ -21,10 +22,24 @@ import matplotlib.pyplot as plt
 # =============================================================================
 # SETUP: DIRECTORIES AND FILE PATHS
 # =============================================================================
-script_dir = os.path.dirname(os.path.abspath(__file__))
+script_dir = Path(__file__).parent
 
-EDGE_LIST_PATH = os.path.join(script_dir, "../data/celloracle_data/base_GRN_edge_list.parquet")
-NULL_MODELS_DIR = os.path.join(script_dir, "../data/GRN_data/Null_Models")
+# Saved data directory
+INPUT_DATA_DIR = Path(script_dir / "../../data")
+
+# Output directories
+FIG_DIR = Path(script_dir / "figures")
+OUTPUT_DATA_DIR = Path(script_dir / "data_output")
+
+# Create directories if they do not exist
+FIG_DIR.mkdir(parents=True, exist_ok=True)
+OUTPUT_DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+# GRN edge list path
+EDGE_LIST_PATH = INPUT_DATA_DIR / "edge_list_to_analyze.parquet"
+
+# Bow-tie data path
+NULL_MODELS_DIR = INPUT_DATA_DIR / "null_models"
 
 N_NULL_MODELS = 1000  
 
@@ -178,7 +193,7 @@ def plot_ck_distribution(real_data, null_data, degree_type):
     ax.tick_params(labelsize=16)
     ax.legend(fontsize=14)
     plt.tight_layout()
-    plt.show()
+    plt.savefig(FIG_DIR / "clustering_undirected_plot.png")
 
 # =============================================================================
 # MAIN EXECUTION

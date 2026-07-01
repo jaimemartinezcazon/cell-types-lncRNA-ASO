@@ -19,22 +19,35 @@ import networkx as nx
 from networkx.algorithms import community as nx_comm
 from tqdm import tqdm
 import multiprocessing as mp
+from pathlib import Path 
 
 # =============================================================================
 # SETUP: FILE PATHS AND PARAMETERS
 # =============================================================================
-script_dir = os.path.dirname(os.path.abspath(__file__))
+script_dir = Path(__file__).parent
 
-EDGE_LIST_PATH = os.path.join(script_dir, "../data/celloracle_data/base_GRN_edge_list.parquet")
-NULL_MODELS_DIR = os.path.join(script_dir, "../data/GRN_data/Null_Models")
-BOWTIE_DIR = os.path.join(script_dir, "../data/GRN_data/bow_tie_components")
-CANDIDATES_PATH = os.path.join(script_dir, "../data/Candidates_list.csv")
-OUTPUT_CSV_PATH = os.path.join(script_dir, "../data/GRN_data/community_significance_analysis.csv")
+# Saved data directory
+INPUT_DATA_DIR = Path(script_dir / "../../data")
+
+# Output directories
+FIG_DIR = Path(script_dir / "figures")
+OUTPUT_DATA_DIR = Path(script_dir / "data_output")
+
+# Create directories if they do not exist
+FIG_DIR.mkdir(parents=True, exist_ok=True)
+OUTPUT_DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+# GRN edge list path
+EDGE_LIST_PATH = INPUT_DATA_DIR / "edge_list_to_analyze.parquet"
+
+NULL_MODELS_DIR     = INPUT_DATA_DIR / "null_models"
+BOWTIE_DIR = INPUT_DATA_DIR / "bow_tie"
+OUTPUT_SIG_PATH = OUTPUT_DATA_DIR / "community_significance_undirected.csv"
 
 NUM_CORES = max(1, mp.cpu_count() - 2)
 
 # Default candidates if CSV is not found
-DEFAULT_CANDIDATES = [
+GEN_SET = [
     "YAL049C", "YBR208C", "YDL182W", "YFL014W", "YGR088W", "YGR180C", 
     "YHL034C", "YJR096W", "YJR137C", "YKL001C", "YLR178C", "YML128C", 
     "YMR105C", "YPL223C", "YPL226W"
@@ -102,21 +115,16 @@ def process_single_null_model(args):
         return None
 
 
-def locate_candidate_genes(partition, candidates_path):
-    """Locates a list of candidate genes within the detected communities."""
-    print("\n--- LOCATING CANDIDATE GENES ---")
-    try:
-        candidates = pd.read_csv(candidates_path).iloc[:, 0].dropna().astype(str).tolist()
-    except FileNotFoundError:
-        print("Candidate list CSV not found. Using default internal list.")
-        candidates = DEFAULT_CANDIDATES
-
-    for gene in candidates:
-        community_id = partition.get(gene)
-        if community_id is not None:
-            print(f"- {gene}: Found in Community {community_id}.")
-        else:
-            print(f"- {gene}: Not found in the main network component.")
+#def locate_candidate_genes(partition, candidates):
+#    """Locates a list of candidate genes within the detected communities."""
+#    print("\n--- LOCATING CANDIDATE GENES ---")
+#
+#    for gene in candidates:
+#        community_id = partition.get(gene)
+#        if community_id is not None:
+#            print(f"- {gene}: Found in Community {community_id}.")
+#        else:
+#            print(f"- {gene}: Not found in the main network component.")
 
 
 def map_communities_to_bowtie(partition, bowtie_dir):
@@ -219,12 +227,11 @@ if __name__ == "__main__":
         print("\nSummary of Community Properties and Significance:")
         print(summary_df.to_string(float_format="%.4f"))
         
-        os.makedirs(os.path.dirname(OUTPUT_CSV_PATH), exist_ok=True)
-        summary_df.to_csv(OUTPUT_CSV_PATH)
-        print(f"\nDetailed summary saved to '{OUTPUT_CSV_PATH}'")
+        summary_df.to_csv(OUTPUT_SIG_PATH)
+        print(f"\nDetailed summary saved to '{OUTPUT_SIG_PATH}'")
 
     # 3. Locate specific genes of interest
-    locate_candidate_genes(partition_main, CANDIDATES_PATH)
+    #locate_candidate_genes(partition_main, GEN_SET)
     
     # 4. Map communities to the bow-tie structure
     map_communities_to_bowtie(partition_main, BOWTIE_DIR)

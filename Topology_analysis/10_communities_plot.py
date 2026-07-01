@@ -9,7 +9,6 @@ Uses a force-based circular layout to prevent overlaps and renders
 intra/inter-community edges in separate layers.
 '''
 
-import os
 import pandas as pd
 import numpy as np
 import networkx as nx
@@ -19,12 +18,30 @@ from matplotlib.lines import Line2D
 from matplotlib.patches import Circle
 from itertools import combinations
 from matplotlib.colors import LinearSegmentedColormap
+from pathlib import Path
 
 # =============================================================================
 # SETUP: FILE PATHS AND PARAMETERS
 # =============================================================================
-script_dir = os.path.dirname(os.path.abspath(__file__))
-EDGE_LIST_PATH = os.path.join(script_dir, "../data/celloracle_data/base_GRN_edge_list.parquet")
+script_dir = Path(__file__).parent
+
+# Saved data directory
+INPUT_DATA_DIR = Path(script_dir / "../../data")
+
+# Output directories
+FIG_DIR = Path(script_dir / "figures")
+OUTPUT_DATA_DIR = Path(script_dir / "data_output")
+
+# Create directories if they do not exist
+FIG_DIR.mkdir(parents=True, exist_ok=True)
+OUTPUT_DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+# GRN edge list path
+EDGE_LIST_PATH = INPUT_DATA_DIR / "edge_list_to_analyze.parquet"
+
+NULL_MODELS_DIR     = INPUT_DATA_DIR / "null_models"
+BOWTIE_DIR = INPUT_DATA_DIR / "bow_tie"
+OUTPUT_SIG_PATH = OUTPUT_DATA_DIR / "community_significance_directed.csv"
 
 # Configuration for visualization (Set to None to include all communities)
 COMMUNITY_TO_EXCLUDE = None  
@@ -167,7 +184,7 @@ def create_network_visualization(G, communities, partition, node_pos, comm_pos, 
     ax.set_frame_on(False)
     ax.tick_params(left=False, bottom=False, labelleft=False, labelbottom=False)
     plt.tight_layout()
-    plt.show()
+    plt.savefig(FIG_DIR / "communities_grn_plot.png")
 
 # =============================================================================
 # MAIN EXECUTION

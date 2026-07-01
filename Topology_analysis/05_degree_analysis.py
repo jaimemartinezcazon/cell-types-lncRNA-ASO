@@ -19,14 +19,29 @@ import networkx as nx
 import numpy as np
 import matplotlib.pyplot as plt
 import powerlaw
+from pathlib import Path
 
 # =============================================================================
 # SETUP: FILE PATHS
 # =============================================================================
-script_dir = os.path.dirname(os.path.abspath(__file__))
+script_dir = Path(__file__).parent
 
-EDGE_LIST_PATH = os.path.join(script_dir, "../data/celloracle_data/base_GRN_edge_list.parquet")
-BOWTIE_COMPONENTS_DIR = os.path.join(script_dir, "../data/GRN_data/bow_tie_components")
+# Saved data directory
+INPUT_DATA_DIR = Path(script_dir / "../../data")
+
+# Output directories
+FIG_DIR = Path(script_dir / "figures")
+OUTPUT_DATA_DIR = Path(script_dir / "data_output")
+
+# Create directories if they do not exist
+FIG_DIR.mkdir(parents=True, exist_ok=True)
+OUTPUT_DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+# GRN edge list path
+EDGE_LIST_PATH = INPUT_DATA_DIR / "edge_list_to_analyze.parquet"
+
+# Bow-tie data path
+BOWTIE_COMPONENTS_DIR = INPUT_DATA_DIR / "bow_tie"
 
 # =============================================================================
 # DATA LOADING
@@ -105,7 +120,7 @@ def plot_global_degree_distributions(G, fit_powerlaw=False):
     _plot_dist(axes[0], degree_in, "In")
     _plot_dist(axes[1], degree_out, "Out")
     plt.tight_layout()
-    plt.show()
+    plt.savefig(FIG_DIR / "degree_distribution_plot_global")
 
 
 def analyze_scc_properties(G):
@@ -148,7 +163,7 @@ def analyze_scc_properties(G):
     _plot_scc_bars(axes[0], f"SCC Global Connections (Top {top_n})", data['Global In'], data['Global Out'])
     _plot_scc_bars(axes[1], f"SCC Internal Connections (Top {top_n})", data['Internal In'], data['Internal Out'])
     plt.tight_layout()
-    plt.show()
+    plt.savefig(FIG_DIR / "SCC_connection_plot")
 
 def analyze_bowtie_components(G, fit_powerlaw=False):
     """
@@ -195,7 +210,7 @@ def analyze_bowtie_components(G, fit_powerlaw=False):
         _plot_dist(axes[0], deg_in, "In-Degree Distribution")
         _plot_dist(axes[1], deg_out, "Out-Degree Distribution")
         plt.tight_layout(rect=[0, 0.03, 1, 0.95])
-        plt.show()
+        plt.savefig(FIG_DIR / f"degree_distribution_plot_{comp_name}")
 
 # =============================================================================
 # MAIN EXECUTION

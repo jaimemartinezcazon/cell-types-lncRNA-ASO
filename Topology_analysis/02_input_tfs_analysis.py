@@ -9,29 +9,32 @@ It also analyzes the regulatory scope (Total Out-Degree) of two specific
 hardcoded sets of TFs: those associated with logarithmic growth and starvation.
 '''
 
-import os
+from pathlib import Path
 import pandas as pd
 import networkx as nx
 
 # =============================================================================
 # SETUP: FILE PATHS AND GENE LISTS
 # =============================================================================
-script_dir = os.path.dirname(os.path.abspath(__file__))
+script_dir = Path(__file__).parent
 
-EDGE_LIST_PATH = os.path.join(script_dir, "../data/celloracle_data/base_GRN_edge_list.parquet")
-OUTPUT_TFS_PATH = os.path.join(script_dir, "../data/TFs_network.csv")
+# Saved data directory
+INPUT_DATA_DIR = Path(script_dir / "../../data")
 
-# Specific sets of Transcription Factors to be analyzed
-LOG_PHASE_TFS = [
-    "YDL056W", "YER111C", "YGR044C", "YIL131C", "YDR146C", "YLR131C", "YNL068C", 
-    "YNL199C", "YPL075W", "YLR403W", "YPR104C", "YGL035C", "YMR172W", "YMR016C", 
-    "YDR310C", "YCR084C"
-]
+# Output directories
+FIG_DIR = Path(script_dir / "figures")
+OUTPUT_DATA_DIR = Path(script_dir / "data_output")
 
-STARVATION_TFS = [
-    "YMR037C", "YGL073W", "YOL116W", "YNL027W", "YOR028C", "YDR310C", 
-    "YCR084C", "YDR207C", "YFL031W"
-]
+# Create directories if they do not exist
+FIG_DIR.mkdir(parents=True, exist_ok=True)
+OUTPUT_DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+# GRN edge list path
+EDGE_LIST_PATH = INPUT_DATA_DIR / "edge_list_to_analyze.parquet"
+
+# Output paths for the filtered giant component data
+OUTPUT_TFS_PATH = OUTPUT_DATA_DIR / "input_tfs.csv"
+
 
 # =============================================================================
 # DATA LOADING AND TF EXTRACTION
@@ -43,8 +46,6 @@ def load_data_and_generate_tfs(edge_path, tf_output_path):
     and saves it to a CSV file for downstream scripts.
     """
     print("Loading network data...")
-    if not os.path.exists(edge_path):
-        raise FileNotFoundError(f"Edge list not found at: {edge_path}")
     
     edges_df = pd.read_parquet(edge_path)
     
@@ -55,12 +56,12 @@ def load_data_and_generate_tfs(edge_path, tf_output_path):
     network_tfs = [n for n in G.nodes() if G.in_degree(n) == 0 and G.out_degree(n) > 0]
     
     # Save the TF list for other scripts (like Centrality.py)
-    os.makedirs(os.path.dirname(tf_output_path), exist_ok=True)
     pd.DataFrame(network_tfs, columns=["Gene"]).to_csv(tf_output_path, index=False)
     print(f"Extracted {len(network_tfs)} general TFs (k_in=0) and saved to {tf_output_path}")
 
     return edges_df, set(G.nodes())
 
+# NOT USED NOW: give a list of important TFs ( [..., ..., ] )to use:
 def analyze_tf_set_out_degree(tf_gene_list, edges_df, all_nodes):
     """Calculates the total out-degree for a specific set of TFs."""
     missing_genes = [g for g in tf_gene_list if g not in all_nodes]
@@ -82,18 +83,6 @@ def analyze_tf_set_out_degree(tf_gene_list, edges_df, all_nodes):
 if __name__ == "__main__":
     try:
         edges_dataframe, network_nodes = load_data_and_generate_tfs(EDGE_LIST_PATH, OUTPUT_TFS_PATH)
-
-        print("\n" + "="*60)
-        print("Analyzing Outgoing Influence of TF Groups...")
-        print("="*60)
-
-        print("\nProcessing Set: LogPhase_TFs")
-        log_phase_degree = analyze_tf_set_out_degree(LOG_PHASE_TFS, edges_dataframe, network_nodes)
-        print(f"  -> Total Out-Degree (Interaction Count): {log_phase_degree}")
-
-        print("\nProcessing Set: Starvation_TFs")
-        starvation_degree = analyze_tf_set_out_degree(STARVATION_TFS, edges_dataframe, network_nodes)
-        print(f"  -> Total Out-Degree (Interaction Count): {starvation_degree}")
         
         print("\n" + "="*60)
         print("Analysis complete.")

@@ -18,28 +18,36 @@ import numpy as np
 import networkx as nx
 from tqdm import tqdm
 import multiprocessing as mp
+from pathlib import Path
 
 # =============================================================================
 # SETUP: FILE PATHS AND PARAMETERS
 # =============================================================================
-script_dir = os.path.dirname(os.path.abspath(__file__))
+script_dir = Path(__file__).parent
 
-EDGE_LIST_PATH = os.path.join(script_dir, "../data/celloracle_data/base_GRN_edge_list.parquet")
-NULL_MODELS_DIR = os.path.join(script_dir, "../data/GRN_data/Null_Models")
-BOWTIE_DIR = os.path.join(script_dir, "../data/GRN_data/bow_tie_components")
-CANDIDATES_PATH = os.path.join(script_dir, "../data/Candidates_list.csv")
+# Saved data directory
+INPUT_DATA_DIR = Path(script_dir / "../../data")
 
-OUTPUT_DIR = os.path.join(script_dir, "../data/GRN_data")
-OUTPUT_SIG_PATH = os.path.join(OUTPUT_DIR, "community_significance_directed.csv")
-OUTPUT_BOWTIE_PATH = os.path.join(OUTPUT_DIR, "community_bowtie_distribution_directed.csv")
+# Output directories
+FIG_DIR = Path(script_dir / "figures")
+OUTPUT_DATA_DIR = Path(script_dir / "data_output")
+
+# Create directories if they do not exist
+FIG_DIR.mkdir(parents=True, exist_ok=True)
+OUTPUT_DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+# GRN edge list path
+EDGE_LIST_PATH = INPUT_DATA_DIR / "edge_list_to_analyze.parquet"
+
+NULL_MODELS_DIR     = INPUT_DATA_DIR / "null_models"
+BOWTIE_DIR = INPUT_DATA_DIR / "bow_tie"
+OUTPUT_SIG_PATH = OUTPUT_DATA_DIR / "community_significance_directed.csv"
 
 NUM_CORES = max(1, mp.cpu_count() - 2)
 
-DEFAULT_CANDIDATES = [
-    "YAL049C", "YBR208C", "YDL182W", "YFL014W", "YGR088W", "YGR180C", 
-    "YHL034C", "YJR096W", "YJR137C", "YKL001C", "YLR178C", "YML128C", 
-    "YMR105C", "YPL223C", "YPL226W"
-]
+#GENE_SET = [
+#    "", ""
+#]
 
 # =============================================================================
 # UTILITY AND ANALYSIS FUNCTIONS
@@ -99,18 +107,13 @@ def process_single_null_model(args):
         return None
 
 
-def locate_candidate_genes(partition, candidates_path):
-    """Locates a list of candidate genes within the detected communities."""
-    print("\n--- LOCATING CANDIDATE GENES ---")
-    try:
-        candidates = pd.read_csv(candidates_path).iloc[:, 0].dropna().astype(str).tolist()
-    except FileNotFoundError:
-        print("Candidate list CSV not found. Using default internal list.")
-        candidates = DEFAULT_CANDIDATES
-
-    for gene in candidates:
-        community_id = partition.get(gene, 'N/A (Isolated or not in network)')
-        print(f"- {gene}: Found in Community {community_id}.")
+#def locate_candidate_genes(partition, candidates):
+#    """Locates a list of candidate genes within the detected communities."""
+#    print("\n--- LOCATING CANDIDATE GENES ---")
+#
+#    for gene in candidates:
+#        community_id = partition.get(gene, 'N/A (Isolated or not in network)')
+#        print(f"- {gene}: Found in Community {community_id}.")
 
 
 def map_communities_to_bowtie(partition, bowtie_dir):
@@ -141,9 +144,8 @@ def map_communities_to_bowtie(partition, bowtie_dir):
     print("\nDistribution of Communities across Bow-Tie Components (%):")
     print(results_df.to_string(float_format="%.2f"))
     
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
-    results_df.to_csv(OUTPUT_BOWTIE_PATH)
-    print(f"\nBow-tie distribution report saved to '{OUTPUT_BOWTIE_PATH}'")
+    results_df.to_csv(BOWTIE_DIR)
+    print(f"\nBow-tie distribution report saved to '{BOWTIE_DIR}'")
 
 
 # =============================================================================
@@ -215,12 +217,12 @@ if __name__ == "__main__":
         print("\nSummary of Directed Community Properties and Significance:")
         print(summary_df.to_string(float_format="%.4f"))
         
-        os.makedirs(OUTPUT_DIR, exist_ok=True)
+        os.makedirs(OUTPUT_DATA_DIR, exist_ok=True)
         summary_df.to_csv(OUTPUT_SIG_PATH)
         print(f"\nDetailed summary saved to '{OUTPUT_SIG_PATH}'")
 
     # 3. Locate specific genes of interest
-    locate_candidate_genes(partition_main, CANDIDATES_PATH)
+    #locate_candidate_genes(partition_main, GENE_SET)
     
     # 4. Map communities to the bow-tie structure
     map_communities_to_bowtie(partition_main, BOWTIE_DIR)

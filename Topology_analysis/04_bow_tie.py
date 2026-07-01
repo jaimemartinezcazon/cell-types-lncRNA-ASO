@@ -26,6 +26,7 @@ IN / OUT / SCC DISJOINTNESS NOTE:
 import os
 import json
 import time
+from pathlib import Path
 import numpy as np
 import pandas as pd
 import networkx as nx
@@ -37,14 +38,26 @@ from tqdm import tqdm
 # =============================================================================
 # SETUP: DIRECTORIES AND FILE PATHS
 # =============================================================================
-script_dir = os.path.dirname(os.path.abspath(__file__))
+script_dir = Path(__file__).parent
 
-EDGE_LIST_PATH      = os.path.join(script_dir, "../data/celloracle_data/base_GRN_edge_list.parquet")
-NULL_MODELS_DIR     = os.path.join(script_dir, "../data/GRN_data/Null_Models")
-OUTPUT_DIR          = os.path.join(script_dir, "../data/GRN_data")
-RESULTS_FILE        = os.path.join(OUTPUT_DIR, "bow_tie_comparison_results.json")
-PLOT_DATA_FILE      = os.path.join(OUTPUT_DIR, "bow_tie_plot_percentages.json")
-SECONDARY_SCC_FILE  = os.path.join(OUTPUT_DIR, "secondary_sccs.json")
+# Saved data directory
+INPUT_DATA_DIR = Path(script_dir / "../../data")
+
+# Output directories
+FIG_DIR = Path(script_dir / "figures")
+OUTPUT_DATA_DIR = Path(script_dir / "data_output")
+
+# Create directories if they do not exist
+FIG_DIR.mkdir(parents=True, exist_ok=True)
+OUTPUT_DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+# GRN edge list path
+EDGE_LIST_PATH = INPUT_DATA_DIR / "edge_list_to_analyze.parquet"
+
+NULL_MODELS_DIR     = INPUT_DATA_DIR / "null_models"
+RESULTS_FILE        = OUTPUT_DATA_DIR / "bow_tie_comparison_results.json"
+PLOT_DATA_FILE      = OUTPUT_DATA_DIR / "bow_tie_plot_percentages.json"
+SECONDARY_SCC_FILE  = OUTPUT_DATA_DIR / "secondary_sccs.json"
 
 NUM_CORES = max(1, mp.cpu_count() - 2)
 
@@ -230,7 +243,6 @@ def process_single_null_model(filepath):
 # =============================================================================
 
 def main():
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
     start_time = time.time()
 
     # -------------------------------------------------------------------------
@@ -408,7 +420,7 @@ def create_sector_plot(plot_data):
     ax.grid(axis='y', linestyle='--', alpha=0.5, zorder=0)
     ax.set_axisbelow(True)
     fig.tight_layout()
-    plt.show()
+    plt.savefig(FIG_DIR / "bow_tie_sizes_plot")
 
 
 def create_secondary_scc_plot(secondary_sizes, min_size=MIN_SCC_SIZE):
@@ -454,7 +466,8 @@ def create_secondary_scc_plot(secondary_sizes, min_size=MIN_SCC_SIZE):
     ax.grid(axis='y', linestyle='--', alpha=0.4, zorder=0)
     ax.set_axisbelow(True)
     fig.tight_layout()
-    plt.show()
+    plt.savefig(FIG_DIR / "secondary_SCC_plot")
+
 
 # =============================================================================
 # SCRIPT EXECUTION

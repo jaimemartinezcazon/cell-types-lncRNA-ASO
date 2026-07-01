@@ -9,23 +9,39 @@ Identifies the top N most central nodes and cross-references them with
 functional annotations (TFs, candidates, bow-tie structure).
 '''
 
-import os
+##
+## NOTE: We are not using candidates here (set of genes that we want to specifically analyze), necessary to modify and include a list if necessary.
+##
+
 import pandas as pd
 import numpy as np
 import networkx as nx
 from pathlib import Path
 from collections import defaultdict
+from pathlib import Path
 
 # =============================================================================
 # SETUP: FILE PATHS AND PARAMETERS
 # =============================================================================
-script_dir = Path(__file__).resolve().parent
+script_dir = Path(__file__).parent
 
-EDGE_LIST_PATH = script_dir / "../data/celloracle_data/base_GRN_edge_list.parquet"
-BOWTIE_DIR = script_dir / "../data/GRN_data/bow_tie_components"
-ANNOTATIONS_DIR = script_dir / "../data"
-OUTPUT_DIR = script_dir / "../data/GRN_data/centrality_output"
+# Saved data directory
+INPUT_DATA_DIR = Path(script_dir / "../../data")
 
+# Output directories
+FIG_DIR = Path(script_dir / "figures")
+OUTPUT_DATA_DIR = Path(script_dir / "data_output")
+
+# Create directories if they do not exist
+FIG_DIR.mkdir(parents=True, exist_ok=True)
+OUTPUT_DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+# GRN edge list path
+EDGE_LIST_PATH = INPUT_DATA_DIR / "edge_list_to_analyze.parquet"
+
+BOWTIE_DIR = INPUT_DATA_DIR / "bow_tie"
+
+# Number of nodes with centrality information
 N_TOP = 10  
 
 # =============================================================================
@@ -40,14 +56,14 @@ def load_network_and_annotations():
     G = nx.from_pandas_edgelist(edge_list, 'source', 'target', create_using=nx.DiGraph())
     
     try:
-        candidates_path = ANNOTATIONS_DIR / "Candidates_list.csv"
+        candidates_path = INPUT_DATA_DIR / "Candidates_list.csv"
         candidates_genes = set(pd.read_csv(candidates_path).iloc[:, 0].dropna().astype(str))
     except FileNotFoundError:
         print("Warning: Candidate list file not found. Skipping candidate analysis.")
         candidates_genes = set()
 
     try:
-        tfs_path = ANNOTATIONS_DIR / "TFs_network.csv"
+        tfs_path = INPUT_DATA_DIR / "TFs_network.csv"
         tfs_genes = set(pd.read_csv(tfs_path).iloc[:, 0].dropna().astype(str))
     except FileNotFoundError:
         print("Warning: TF list file not found. Skipping TF analysis.")
@@ -147,8 +163,7 @@ if __name__ == "__main__":
 
     centrality_results_df = calculate_centrality_measures(G_main)
     
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    output_path = OUTPUT_DIR / "full_centrality_analysis.csv"
+    output_path = OUTPUT_DATA_DIR / "full_centrality_analysis.csv"
     centrality_results_df.to_csv(output_path, index=False, float_format='%.8f')
     print(f"\nFull centrality data saved to: {output_path}")
 

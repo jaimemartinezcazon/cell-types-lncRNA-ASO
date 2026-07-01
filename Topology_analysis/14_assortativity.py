@@ -17,14 +17,28 @@ import networkx as nx
 from tqdm import tqdm
 import multiprocessing as mp
 import matplotlib.pyplot as plt
+from pathlib import Path
 
 # =============================================================================
 # SETUP: FILE PATHS AND PARAMETERS
 # =============================================================================
-script_dir = os.path.dirname(os.path.abspath(__file__))
+script_dir = Path(__file__).parent
 
-EDGE_LIST_PATH = os.path.join(script_dir, "../data/celloracle_data/base_GRN_edge_list.parquet")
-NULL_MODELS_DIR = os.path.join(script_dir, "../data/GRN_data/Null_Models")
+# Saved data directory
+INPUT_DATA_DIR = Path(script_dir / "../../data")
+
+# Output directories
+FIG_DIR = Path(script_dir / "figures")
+OUTPUT_DATA_DIR = Path(script_dir / "data_output")
+
+# Create directories if they do not exist
+FIG_DIR.mkdir(parents=True, exist_ok=True)
+OUTPUT_DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+# GRN edge list path
+EDGE_LIST_PATH = INPUT_DATA_DIR / "edge_list_to_analyze.parquet"
+
+NULL_MODELS_DIR     = INPUT_DATA_DIR / "null_models"
 
 NUM_CORES = max(1, mp.cpu_count() - 2)
 
@@ -194,6 +208,6 @@ if __name__ == "__main__":
             config["yscale"]
         )
         plt.tight_layout()
-        plt.show()
+        plt.savefig(FIG_DIR / "assortativity_plot.png")
 
     print("\nAnalysis complete.")

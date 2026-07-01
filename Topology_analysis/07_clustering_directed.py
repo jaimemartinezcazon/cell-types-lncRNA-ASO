@@ -13,15 +13,28 @@ import numpy as np
 from tqdm import tqdm
 import multiprocessing as mp
 import igraph as ig
+from pathlib import Path
 
 # =============================================================================
 # SETUP: FILE PATHS AND PARAMETERS
 # =============================================================================
-script_dir = os.path.dirname(os.path.abspath(__file__))
+script_dir = Path(__file__).parent
 
-EDGE_LIST_PATH  = os.path.join(script_dir, "../data/celloracle_data/base_GRN_edge_list.parquet")
-NULL_MODELS_DIR = os.path.join(script_dir, "../data/GRN_data/Null_Models")
-OUTPUT_CSV_PATH = os.path.join(script_dir, "../data/GRN_data/motif_counts.csv")
+# Saved data directory
+INPUT_DATA_DIR = Path(script_dir / "../../data")
+
+# Output directories
+FIG_DIR = Path(script_dir / "figures")
+OUTPUT_DATA_DIR = Path(script_dir / "data_output")
+
+# Create directories if they do not exist
+FIG_DIR.mkdir(parents=True, exist_ok=True)
+OUTPUT_DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+# GRN edge list path
+EDGE_LIST_PATH = INPUT_DATA_DIR / "edge_list_to_analyze.parquet"
+
+NULL_MODELS_DIR     = INPUT_DATA_DIR / "null_models"
 
 # Limit the number of null models to process (useful for testing, set to None for all)
 MAX_NULL_MODELS = 1000
@@ -193,8 +206,8 @@ if __name__ == "__main__":
         })
 
     results_df = pd.DataFrame(final_data)
-    os.makedirs(os.path.dirname(OUTPUT_CSV_PATH), exist_ok=True)
-    results_df.to_csv(OUTPUT_CSV_PATH, index=False)
+    os.makedirs(os.path.dirname(OUTPUT_DATA_DIR), exist_ok=True)
+    results_df.to_csv(OUTPUT_DATA_DIR, index=False)
 
-    print(f"\nMotif analysis complete. Data saved to: {OUTPUT_CSV_PATH}")
+    print(f"\nMotif analysis complete. Data saved to: {OUTPUT_DATA_DIR}")
     print(results_df.to_string(index=False))

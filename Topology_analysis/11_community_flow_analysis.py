@@ -9,16 +9,30 @@ then calculates the "outward flow percentage" for each community (proportion
 of external connections that are outgoing) to identify source/sink dynamics.
 '''
 
-import os
 import pandas as pd
 import networkx as nx
 from networkx.algorithms import community as nx_comm
+from pathlib import Path
 
 # =============================================================================
 # SETUP: FILE PATHS
 # =============================================================================
-script_dir = os.path.dirname(os.path.abspath(__file__))
-EDGE_LIST_PATH = os.path.join(script_dir, "../data/celloracle_data/base_GRN_edge_list.parquet")
+script_dir = Path(__file__).parent
+
+# Saved data directory
+INPUT_DATA_DIR = Path(script_dir / "../../data")
+
+# Output directories
+FIG_DIR = Path(script_dir / "figures")
+OUTPUT_DATA_DIR = Path(script_dir / "data_output")
+
+# Create directories if they do not exist
+FIG_DIR.mkdir(parents=True, exist_ok=True)
+OUTPUT_DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+# GRN edge list path
+EDGE_LIST_PATH = INPUT_DATA_DIR / "edge_list_to_analyze.parquet"
+
 
 # =============================================================================
 # ANALYSIS FUNCTIONS

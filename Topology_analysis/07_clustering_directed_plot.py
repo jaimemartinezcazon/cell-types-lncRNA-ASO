@@ -11,11 +11,13 @@ import os
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+from pathlib import Path
 
 # =============================================================================
 # SETUP: FILE PATHS
 # =============================================================================
 script_dir = os.path.dirname(os.path.abspath(__file__))
+
 MOTIF_COUNTS_FILE = os.path.join(script_dir, "../data/GRN_data/motif_counts.csv")
 
 # =============================================================================

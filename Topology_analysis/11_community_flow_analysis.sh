@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=GRN_Null_Models          # Sets the job's name shown in the queue
+#SBATCH --job-name=GRN_Flow_Analysis        # Sets the job's name shown in the queue
 #SBATCH --output=logs/%x_%j.out	            # Writes the output to a given file
 #SBATCH --error=logs/%x_%j.err  	        # Writes the errors to a given file
 #SBATCH --time=24:00:00         			# If the job takes more time than specified, is remode from the queue
@@ -19,4 +19,4 @@ module purge
 module load tools/miniconda/python3.10/23.3.1
 
 # Execute
-srun -n1 conda run --prefix=/exports/ana-scarlab/jmartinezcazon/envs/celloracle_env python 03-Configuration_model.py
+srun -n1 conda run --prefix=/exports/ana-scarlab/jmartinezcazon/envs/celloracle_env python 11_community_flow_analysis.py
