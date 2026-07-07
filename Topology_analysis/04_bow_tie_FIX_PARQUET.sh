@@ -19,4 +19,4 @@ module purge
 module load tools/miniconda/python3.10/23.3.1
 
 # Execute
-srun -n1 conda run --prefix=/exports/ana-scarlab/jmartinezcazon/envs/celloracle_env python 04_bow_tie.py
+srun -n1 conda run --prefix=/exports/ana-scarlab/jmartinezcazon/envs/celloracle_env python 04_bow_tie_FIX_PARQUET.py
