@@ -45,13 +45,20 @@ def load_and_partition_network(edge_path):
     """
     print("Step 1: Loading data and detecting communities...")
     edge_list = pd.read_parquet(edge_path)
-    G_directed = nx.from_pandas_edgelist(
+    G_full = nx.from_pandas_edgelist(
         edge_list,
         source='source',
         target='target',
         create_using=nx.DiGraph()
     )
     
+    ## Only work with main WCC
+    giant_component_nodes = max(nx.weakly_connected_components(G_full), key=len)
+    G_directed = G_full.subgraph(giant_component_nodes).copy()
+    
+    ## Eliminate self-loops
+    G_directed.remove_edges_from(nx.selfloop_edges(G_directed))
+
     # Community detection on the undirected version
     G_undirected = G_directed.to_undirected()
     

@@ -38,7 +38,7 @@ OUTPUT_DATA_DIR.mkdir(parents=True, exist_ok=True)
 # GRN edge list path
 EDGE_LIST_PATH = INPUT_DATA_DIR / "edge_list_to_analyze.parquet"
 
-# Bow-tie data path
+# Null models data path (actualizado para parquet)
 NULL_MODELS_DIR = INPUT_DATA_DIR / "null_models"
 
 N_NULL_MODELS = 1000  
@@ -110,6 +110,9 @@ def load_real_network():
     G_real = max(undirected_components, key=len)
     G_real = G_full.subgraph(G_real.nodes()).copy() 
     
+    ## Eliminate self-loops
+    G_real.remove_edges_from(nx.selfloop_edges(G_real))
+
     print(f"Real network loaded: {G_real.number_of_nodes()} nodes, {G_real.number_of_edges()} edges.")
     return G_real
 
@@ -120,14 +123,19 @@ def analyze_null_models():
     null_ck_raw_data = {"all": defaultdict(list), "in": defaultdict(list), "out": defaultdict(list)}
     
     for i in tqdm(range(N_NULL_MODELS)):
-        file_path = os.path.join(NULL_MODELS_DIR, f"null_model_{str(i).zfill(4)}.graphml")
+        file_path = os.path.join(NULL_MODELS_DIR, f"null_model_{str(i).zfill(4)}.parquet")
         if not os.path.exists(file_path):
             continue
             
         try:
-            # node_type=str because gene names are now strings
-            G_null = nx.read_graphml(file_path, node_type=str)
+            # Parquet files are read directly into pandas DataFrames
+            edges = pd.read_parquet(file_path)
+            G_null = nx.from_pandas_edgelist(
+                edges, source='source', target='target', create_using=nx.DiGraph()
+            )
             
+            ## Eliminate self-loops
+            G_null.remove_edges_from(nx.selfloop_edges(G_null))
             local_c_null = nx.clustering(G_null.to_undirected())
             null_global_clustering.append(np.mean(list(local_c_null.values())))
 
@@ -193,7 +201,7 @@ def plot_ck_distribution(real_data, null_data, degree_type):
     ax.tick_params(labelsize=16)
     ax.legend(fontsize=14)
     plt.tight_layout()
-    plt.savefig(FIG_DIR / "clustering_undirected_plot.png")
+    plt.savefig(FIG_DIR / f"clustering_{degree_type}_plot.png")
 
 # =============================================================================
 # MAIN EXECUTION

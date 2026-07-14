@@ -33,7 +33,7 @@ OUTPUT_DATA_DIR.mkdir(parents=True, exist_ok=True)
 EDGE_LIST_PATH = INPUT_DATA_DIR / "edge_list_to_analyze.parquet"
 
 # Output paths for the filtered giant component data
-OUTPUT_TFS_PATH = OUTPUT_DATA_DIR / "input_tfs.csv"
+OUTPUT_TFS_PATH = OUTPUT_DATA_DIR / "input_tfs.parquet"
 
 
 # =============================================================================
@@ -43,20 +43,27 @@ OUTPUT_TFS_PATH = OUTPUT_DATA_DIR / "input_tfs.csv"
 def load_data_and_generate_tfs(edge_path, tf_output_path):
     """
     Loads the edge list, generates a list of all network TFs (k_in=0), 
-    and saves it to a CSV file for downstream scripts.
+    and saves it to a PARQUET file for downstream scripts.
     """
     print("Loading network data...")
     
     edges_df = pd.read_parquet(edge_path)
     
     # Build graph to find all k_in=0 nodes
-    G = nx.from_pandas_edgelist(edges_df, source='source', target='target', create_using=nx.DiGraph())
+    G_full = nx.from_pandas_edgelist(edges_df, source='source', target='target', create_using=nx.DiGraph())
     
+    ## Only work with main WCC
+    giant_component_nodes = max(nx.weakly_connected_components(G_full), key=len)
+    G = G_full.subgraph(giant_component_nodes).copy()
+
+    ## Eliminate self-loops
+    G.remove_edges_from(nx.selfloop_edges(G))
+
     # Identify network TFs (in-degree 0, out-degree > 0)
     network_tfs = [n for n in G.nodes() if G.in_degree(n) == 0 and G.out_degree(n) > 0]
     
     # Save the TF list for other scripts (like Centrality.py)
-    pd.DataFrame(network_tfs, columns=["Gene"]).to_csv(tf_output_path, index=False)
+    pd.DataFrame(network_tfs, columns=["Gene"]).to_parquet(tf_output_path, index=False)
     print(f"Extracted {len(network_tfs)} general TFs (k_in=0) and saved to {tf_output_path}")
 
     return edges_df, set(G.nodes())

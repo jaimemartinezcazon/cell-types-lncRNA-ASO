@@ -1,13 +1,10 @@
 '''
 Author: Jaime Martínez Cazón
-Adapted for direct gene names and unparquet edge lists (unweighted).
 
-Description:
-Generates an ensemble of surrogate networks (null models) based on a Gene 
-Regulatory Network using the directed configuration model. This preserves the 
-in-degree and out-degree sequence of every node while randomizing connections. 
-The generated networks maintain original gene names (strings) as nodes and are 
-saved in GraphML format.
+Generates an ensemble of surrogate (null model) networks from a GRN edge list
+using the directed configuration model. Preserves in/out-degree sequence of
+every node while randomizing connections. Saves each null model as a parquet
+edge list (source, target) instead of GraphML for faster I/O downstream.
 '''
 
 import os
@@ -17,100 +14,91 @@ import networkx as nx
 from tqdm import tqdm
 
 # =============================================================================
-# SETUP: CONFIGURATION PARAMETERS
+# PATHS
 # =============================================================================
-script_dir = Path(__file__).parent
 
-# Saved data directory
+script_dir     = Path(__file__).parent
 INPUT_DATA_DIR = Path(script_dir / "../../data")
+FIG_DIR        = Path(script_dir / "figures")
+OUTPUT_DATA_DIR= Path(script_dir / "data_output")
 
-# Output directories
-FIG_DIR = Path(script_dir / "figures")
-OUTPUT_DATA_DIR = Path(script_dir / "data_output")
-
-# Create directories if they do not exist
 FIG_DIR.mkdir(parents=True, exist_ok=True)
 OUTPUT_DATA_DIR.mkdir(parents=True, exist_ok=True)
 
-# GRN edge list path
-EDGE_LIST_PATH = INPUT_DATA_DIR / "edge_list_to_analyze.parquet"
-
-NUM_NULL_MODELS = 1000  
+EDGE_LIST_PATH  = INPUT_DATA_DIR / "edge_list_to_analyze.parquet"
+NUM_NULL_MODELS = 1000
 
 # =============================================================================
-# DATA LOADING FUNCTION
+# FUNCTIONS
 # =============================================================================
 
 def load_real_network(filepath):
-    """Loads the real network from an edge list file."""
-    
+    """Loads the real network from a parquet edge list."""
     print(f"Loading real network from: {filepath}")
     edge_list = pd.read_parquet(filepath)
-    
-    G_real = nx.from_pandas_edgelist(
-        edge_list,
-        source='source',
-        target='target',
+    G_full = nx.from_pandas_edgelist(
+        edge_list, source='source', target='target',
         create_using=nx.DiGraph()
     )
-    print("Real network loaded successfully.")
-    return G_real
 
-# =============================================================================
-# NULL MODEL GENERATION FUNCTION
-# =============================================================================
+    ## Only work with main WCC
+    giant_component_nodes = max(nx.weakly_connected_components(G_full), key=len)
+    G = G_full.subgraph(giant_component_nodes).copy()
+
+    ## Eliminate self-loops
+    G.remove_edges_from(nx.selfloop_edges(G))
+    print(f"Loaded: {G.number_of_nodes():,} nodes | {G.number_of_edges():,} edges")
+    return G
+
 
 def generate_null_models(G_real, num_models, output_dir):
     """
-    Generates and saves null models using the directed configuration model,
-    preserving the original string node names.
-    """
-    print(f"Generating {num_models} null models in directory: '{output_dir}'")
-    
-    # Fix the order of nodes to properly map degrees and relabel later
-    nodes_list = list(G_real.nodes())
-    
-    # Extract degree sequences matching the exact order of nodes_list
-    in_degree_sequence = [G_real.in_degree(n) for n in nodes_list]
-    out_degree_sequence = [G_real.out_degree(n) for n in nodes_list]
-    
-    # Mapping dictionary to restore string gene names after generation
-    node_mapping = {i: nodes_list[i] for i in range(len(nodes_list))}
+    Generates null models via the directed configuration model and saves
+    each as a parquet edge list. Node integer indices are relabeled back
+    to original gene name strings before saving.
 
-    for i in tqdm(range(num_models), desc="Generating Null Models"):
-        # Generate null model (creates integer nodes 0 to N-1)
-        G_null_multi = nx.directed_configuration_model(
+    Note: converting MultiDiGraph -> DiGraph removes parallel edges, which
+    slightly reduces edge count relative to the original. Self-loops are
+    also removed. Both are standard post-processing steps for this null model.
+    """
+    nodes_list         = list(G_real.nodes())
+    in_degree_sequence = [G_real.in_degree(n)  for n in nodes_list]
+    out_degree_sequence= [G_real.out_degree(n) for n in nodes_list]
+    node_mapping       = {i: nodes_list[i] for i in range(len(nodes_list))}
+
+    print(f"Generating {num_models} null models → {output_dir}")
+
+    for i in tqdm(range(num_models), desc="Null models"):
+        # Configuration model returns a MultiDiGraph with integer nodes
+        G_multi = nx.directed_configuration_model(
             in_degree_sequence,
             out_degree_sequence,
             create_using=nx.MultiDiGraph
         )
-
-        # Convert to simple DiGraph to remove parallel edges
-        G_null = nx.DiGraph(G_null_multi)
-        
-        # Remove self-loops
+        # Remove parallel edges and self-loops
+        G_null = nx.DiGraph(G_multi)
         G_null.remove_edges_from(nx.selfloop_edges(G_null))
 
-        # Relabel integer nodes back to original gene name strings
+        # Restore original gene name strings
         nx.relabel_nodes(G_null, node_mapping, copy=False)
 
-        # Save as GraphML
-        file_path = os.path.join(output_dir, f"null_model_{str(i).zfill(4)}.graphml")
-        nx.write_graphml(G_null, file_path)
+        # Save as parquet edge list — much faster to load than GraphML
+        edges_df = nx.to_pandas_edgelist(G_null)[['source', 'target']]
+        out_path = OUTPUT_DATA_DIR / f"null_model_{str(i).zfill(3)}.parquet"
+        edges_df.to_parquet(out_path, index=False)
 
-    print(f"\nSuccessfully generated and saved {num_models} null models.")
+    print(f"Done. {num_models} null models saved to {OUTPUT_DATA_DIR}")
 
 # =============================================================================
-# SCRIPT EXECUTION
+# ENTRY POINT
 # =============================================================================
 
 if __name__ == "__main__":
     try:
-        real_network = load_real_network(EDGE_LIST_PATH)
-        generate_null_models(real_network, NUM_NULL_MODELS, OUTPUT_DATA_DIR)
-        
+        G_real = load_real_network(EDGE_LIST_PATH)
+        generate_null_models(G_real, NUM_NULL_MODELS, OUTPUT_DATA_DIR)
     except FileNotFoundError as e:
         print(f"Error: {e}")
-        print("Please ensure the data file is in the correct location and try again.")
     except Exception as e:
-        print(f"An unexpected error occurred: {e}")
+        print(f"Unexpected error: {e}")
+        raise

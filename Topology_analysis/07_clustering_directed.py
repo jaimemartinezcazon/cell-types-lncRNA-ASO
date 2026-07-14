@@ -34,6 +34,7 @@ OUTPUT_DATA_DIR.mkdir(parents=True, exist_ok=True)
 # GRN edge list path
 EDGE_LIST_PATH = INPUT_DATA_DIR / "edge_list_to_analyze.parquet"
 
+# Null models data path (updated for parquet)
 NULL_MODELS_DIR     = INPUT_DATA_DIR / "null_models"
 
 # Limit the number of null models to process (useful for testing, set to None for all)
@@ -90,19 +91,20 @@ def count_target_motifs_igraph(G_ig):
 
 def process_single_null_model(filepath):
     """
-    Worker function: loads one graphml file with igraph and returns motif counts.
-
-    igraph's GraphML reader is also faster than NetworkX's for large files
-    because parsing is done in C.
+    Worker function: loads one parquet file, builds an igraph graph, 
+    and returns motif counts.
 
     Returns None on failure; the main process counts how many None's appear
     so silent data loss is visible.
     """
     try:
-        # directed=True is explicit to avoid ambiguity with undirected GraphML files
-        G_null = ig.Graph.Read_GraphML(filepath)
-        if not G_null.is_directed():
-            G_null = G_null.as_directed()
+        # Load edge list from parquet
+        edge_list = pd.read_parquet(filepath)
+        
+        # Build igraph graph directly from (source, target) pairs
+        edges = list(zip(edge_list["source"], edge_list["target"]))
+        G_null = ig.Graph.TupleList(edges, directed=True)
+        
         G_null.simplify(loops=True, multiple=False)   # remove self-loops only
         return count_target_motifs_igraph(G_null)
     except Exception as e:
@@ -125,11 +127,15 @@ def load_real_network():
     # Build igraph graph directly from (source, target) pairs.
     # TupleList is the recommended fast constructor for edge lists.
     edges = list(zip(edge_list["source"], edge_list["target"]))
-    G = ig.Graph.TupleList(edges, directed=True)
+    G_full = ig.Graph.TupleList(edges, directed=True)
+
+    ## Only work with main WCC
+    components = G_full.connected_components(mode="weak")
+    largest_comp = max(components, key=len)
+    G = G_full.induced_subgraph(largest_comp)
 
     # Remove self-loops (multiple=False keeps multi-edges if any; adjust if needed)
     G.simplify(loops=True, multiple=False)
-
     print(f"  Nodes: {G.vcount():,}   Edges: {G.ecount():,}")
     return G
 
@@ -151,14 +157,15 @@ if __name__ == "__main__":
 
     # -------------------------------------------------------------------------
     # 2. Analyze Null Models
-    #    Parallelisation strategy is unchanged: one process per graphml file.
+    #    Parallelisation strategy is unchanged: one process per file.
     #    Each worker loads and analyses its file independently, so there is no
     #    shared memory and no GIL contention.
     # -------------------------------------------------------------------------
+    # Updated to search for .parquet files
     null_files = sorted(
         os.path.join(NULL_MODELS_DIR, f)
         for f in os.listdir(NULL_MODELS_DIR)
-        if f.endswith(".graphml")
+        if f.endswith(".parquet")
     )
 
     if MAX_NULL_MODELS:
@@ -207,7 +214,10 @@ if __name__ == "__main__":
 
     results_df = pd.DataFrame(final_data)
     os.makedirs(os.path.dirname(OUTPUT_DATA_DIR), exist_ok=True)
-    results_df.to_csv(OUTPUT_DATA_DIR, index=False)
+    
+    # Fixing the original path bug (saving to a file instead of directly to a directory path)
+    output_file = OUTPUT_DATA_DIR / "motif_results.csv"
+    results_df.to_csv(output_file, index=False)
 
-    print(f"\nMotif analysis complete. Data saved to: {OUTPUT_DATA_DIR}")
+    print(f"\nMotif analysis complete. Data saved to: {output_file}")
     print(results_df.to_string(index=False))

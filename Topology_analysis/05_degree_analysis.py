@@ -57,12 +57,20 @@ def load_network_data():
     print("Loading network data...")
     edge_list = pd.read_parquet(EDGE_LIST_PATH)
     
-    G = nx.from_pandas_edgelist(
+    G_full = nx.from_pandas_edgelist(
         edge_list,
         source='source',
         target='target',
         create_using=nx.DiGraph()
     )
+
+    ## Only work with main WCC
+    giant_component_nodes = max(nx.weakly_connected_components(G_full), key=len)
+    G = G_full.subgraph(giant_component_nodes).copy()
+
+    ## Eliminate self-loops
+    G.remove_edges_from(nx.selfloop_edges(G))
+
     print(f"Network data loaded successfully. Nodes: {G.number_of_nodes()}, Edges: {G.number_of_edges()}")
     return G
 
@@ -191,8 +199,8 @@ def analyze_bowtie_components(G, fit_powerlaw=False):
         else:
             ax.text(0.5, 0.5, "Insufficient data", ha='center', va='center', transform=ax.transAxes)
 
-    components = {'IN': 'in_sector_nodes.csv', 'SCC': 'scc_nodes.csv',
-                  'OUT': 'out_sector_nodes.csv', 'OTHERS': 'others_nodes.csv'}
+    components = {'IN': 'in_sector_nodes.parquet', 'SCC': 'scc_nodes.parquet',
+                  'OUT': 'out_sector_nodes.parquet', 'OTHERS': 'others_nodes.parquet'}
 
     for comp_name, filename in components.items():
         filepath = os.path.join(BOWTIE_COMPONENTS_DIR, filename)
@@ -200,7 +208,7 @@ def analyze_bowtie_components(G, fit_powerlaw=False):
             print(f"Warning: Component file not found, skipping: {filepath}")
             continue
             
-        ids = pd.read_csv(filepath).iloc[:, 0].tolist()
+        ids = pd.read_parquet(filepath).iloc[:, 0].tolist()
         
         deg_in = np.array([G.in_degree(n) for n in ids if n in G and G.in_degree(n) > 0])
         deg_out = np.array([G.out_degree(n) for n in ids if n in G and G.out_degree(n) > 0])

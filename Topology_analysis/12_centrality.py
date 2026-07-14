@@ -53,18 +53,29 @@ def load_network_and_annotations():
     print("Loading all required data...")
     
     edge_list = pd.read_parquet(EDGE_LIST_PATH)
-    G = nx.from_pandas_edgelist(edge_list, 'source', 'target', create_using=nx.DiGraph())
+    print("Loading real network...")
+    edge_list = pd.read_parquet(EDGE_LIST_PATH)
+
+    G_full = nx.from_pandas_edgelist(
+        edge_list, source='source', target='target', create_using=nx.DiGraph()
+    )
+    ## Only work with main WCC
+    giant_component_nodes = max(nx.weakly_connected_components(G_full), key=len)
+    G = G_full.subgraph(giant_component_nodes).copy()
     
+    ## Eliminate self-loops
+    G.remove_edges_from(nx.selfloop_edges(G))
+
     try:
-        candidates_path = INPUT_DATA_DIR / "Candidates_list.csv"
-        candidates_genes = set(pd.read_csv(candidates_path).iloc[:, 0].dropna().astype(str))
+        candidates_path = INPUT_DATA_DIR / "Candidates_list.parquet"
+        candidates_genes = set(pd.read_parquet(candidates_path).iloc[:, 0].dropna().astype(str))
     except FileNotFoundError:
         print("Warning: Candidate list file not found. Skipping candidate analysis.")
         candidates_genes = set()
 
     try:
-        tfs_path = INPUT_DATA_DIR / "TFs_network.csv"
-        tfs_genes = set(pd.read_csv(tfs_path).iloc[:, 0].dropna().astype(str))
+        tfs_path = INPUT_DATA_DIR / "TFs_network.parquet"
+        tfs_genes = set(pd.read_parquet(tfs_path).iloc[:, 0].dropna().astype(str))
     except FileNotFoundError:
         print("Warning: TF list file not found. Skipping TF analysis.")
         tfs_genes = set()
@@ -72,8 +83,8 @@ def load_network_and_annotations():
     node_sector_map = {}
     for sector in ['IN', 'SCC', 'OUT', 'OTHERS']:
         try:
-            sector_path = BOWTIE_DIR / f"{sector.lower()}_sector_nodes.csv"
-            sector_nodes = pd.read_csv(sector_path).iloc[:, 0].dropna().astype(str)
+            sector_path = BOWTIE_DIR / f"{sector.lower()}_sector_nodes.parquet"
+            sector_nodes = pd.read_parquet(sector_path).iloc[:, 0].dropna().astype(str)
             for node in sector_nodes:
                 node_sector_map[node] = sector
         except FileNotFoundError:
@@ -163,8 +174,8 @@ if __name__ == "__main__":
 
     centrality_results_df = calculate_centrality_measures(G_main)
     
-    output_path = OUTPUT_DATA_DIR / "full_centrality_analysis.csv"
-    centrality_results_df.to_csv(output_path, index=False, float_format='%.8f')
+    output_path = OUTPUT_DATA_DIR / "full_centrality_analysis.parquet"
+    centrality_results_df.to_parquet(output_path, index=False)
     print(f"\nFull centrality data saved to: {output_path}")
 
     centrality_measures = [

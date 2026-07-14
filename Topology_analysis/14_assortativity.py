@@ -8,7 +8,6 @@ Average Nearest-Neighbor degree (ANN) as a function of node degree (k).
 Compares the real network against an ensemble of surrogate networks using 
 multiprocessing for speed. Analyzes undirected and 4 directed configurations.
 '''
-
 import os
 import glob
 import pandas as pd
@@ -38,6 +37,7 @@ OUTPUT_DATA_DIR.mkdir(parents=True, exist_ok=True)
 # GRN edge list path
 EDGE_LIST_PATH = INPUT_DATA_DIR / "edge_list_to_analyze.parquet"
 
+# Keeping the directory exactly as requested
 NULL_MODELS_DIR     = INPUT_DATA_DIR / "null_models"
 
 NUM_CORES = max(1, mp.cpu_count() - 2)
@@ -82,9 +82,13 @@ def load_real_network():
         edge_list, source='source', target='target', create_using=nx.DiGraph()
     )
     
+    ## Only work with main WCC
     giant_component_nodes = max(nx.weakly_connected_components(G_full), key=len)
     G_real = G_full.subgraph(giant_component_nodes).copy()
     
+    ## Eliminate self-loops
+    G_real.remove_edges_from(nx.selfloop_edges(G_real))
+
     print(f"Real network (giant component) loaded: {G_real.number_of_nodes()} nodes.")
     return G_real
 
@@ -92,9 +96,14 @@ def load_real_network():
 def process_single_null_model(filepath):
     """Worker function to process ANN metrics for a single null model."""
     try:
-        G_null = nx.read_graphml(filepath, node_type=str)
-        if G_null.number_of_nodes() == 0: 
-            return None
+        # Load edge list from parquet and convert to directed networkx graph
+        edges = pd.read_parquet(filepath)
+        G_null = nx.from_pandas_edgelist(
+            edges, source='source', target='target', create_using=nx.DiGraph()
+        )
+        
+        ## Eliminate self-loops
+        G_null.remove_edges_from(nx.selfloop_edges(G_null))
 
         res = {'undirected': [], 'in-in': [], 'in-out': [], 'out-in': [], 'out-out': []}
         
@@ -172,7 +181,8 @@ if __name__ == "__main__":
     }
     
     # --- 2. Load and analyze null models ---
-    null_files = glob.glob(os.path.join(NULL_MODELS_DIR, "*.graphml"))
+    # Updated to search for .parquet files
+    null_files = glob.glob(os.path.join(NULL_MODELS_DIR, "*.parquet"))
     null_ann_points = {'undirected': [], 'in-in': [], 'in-out': [], 'out-in': [], 'out-out': []}
     
     if null_files:
@@ -208,6 +218,6 @@ if __name__ == "__main__":
             config["yscale"]
         )
         plt.tight_layout()
-        plt.savefig(FIG_DIR / "assortativity_plot.png")
+        plt.savefig(FIG_DIR / f"assortativity_{config['case']}_plot.png")
 
     print("\nAnalysis complete.")

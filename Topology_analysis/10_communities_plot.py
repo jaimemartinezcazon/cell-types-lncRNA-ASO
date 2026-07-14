@@ -40,7 +40,6 @@ OUTPUT_DATA_DIR.mkdir(parents=True, exist_ok=True)
 EDGE_LIST_PATH = INPUT_DATA_DIR / "edge_list_to_analyze.parquet"
 
 NULL_MODELS_DIR     = INPUT_DATA_DIR / "null_models"
-BOWTIE_DIR = INPUT_DATA_DIR / "bow_tie"
 OUTPUT_SIG_PATH = OUTPUT_DATA_DIR / "community_significance_directed.csv"
 
 # Configuration for visualization (Set to None to include all communities)
@@ -54,10 +53,17 @@ def load_and_partition_network(edge_path):
     """Loads the network and detects communities using NetworkX's Louvain algorithm."""
     print("Step 1: Loading network and detecting communities...")
     edge_list = pd.read_parquet(edge_path)
-    G = nx.from_pandas_edgelist(
+    G_full = nx.from_pandas_edgelist(
         edge_list, source='source', target='target', create_using=nx.Graph()
     )
-    
+
+    ## Only work with main WCC
+    giant_component_nodes = max(nx.weakly_connected_components(G_full), key=len)
+    G= G_full.subgraph(giant_component_nodes).copy()
+
+    ## Eliminate self-loops
+    G.remove_edges_from(nx.selfloop_edges(G))
+
     # Use NetworkX built-in Louvain
     communities_list = nx_comm.louvain_communities(G, seed=42)
     num_communities = len(communities_list)

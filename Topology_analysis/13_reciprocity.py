@@ -35,6 +35,7 @@ OUTPUT_DATA_DIR.mkdir(parents=True, exist_ok=True)
 # GRN edge list path
 EDGE_LIST_PATH = INPUT_DATA_DIR / "edge_list_to_analyze.parquet"
 
+# The directory name is kept as requested
 NULL_MODELS_DIR     = INPUT_DATA_DIR / "null_models"
 
 N_NULL_MODELS = 1000  
@@ -71,9 +72,13 @@ def load_real_network(filepath):
         edge_list, 'source', 'target', create_using=nx.DiGraph()
     )
     
+    ## Only work with main WCC
     giant_component_nodes = max(nx.weakly_connected_components(G_full), key=len)
     G_real = G_full.subgraph(giant_component_nodes).copy()
     
+    ## Eliminate self-loops
+    G_real.remove_edges_from(nx.selfloop_edges(G_real))
+
     print(f"Real network (giant component) loaded: {G_real.number_of_nodes()} nodes.")
     return G_real
 
@@ -84,14 +89,20 @@ def analyze_null_models_reciprocity(null_dir, num_models):
     null_reciprocity_list = []
     
     for i in tqdm(range(num_models), desc="Analyzing Null Models"):
-        file_path = os.path.join(null_dir, f"null_model_{str(i).zfill(4)}.graphml")
+        # Updated to search for .parquet files
+        file_path = os.path.join(null_dir, f"null_model_{str(i).zfill(4)}.parquet")
         if not os.path.exists(file_path):
             continue
             
         try:
-            # Read as strings since node names are gene symbols
-            G_null = nx.read_graphml(file_path, node_type=str)
+            # Load edge list from parquet and convert to directed networkx graph
+            edges = pd.read_parquet(file_path)
+            G_null = nx.from_pandas_edgelist(
+                edges, source='source', target='target', create_using=nx.DiGraph()
+            )
+            
             if G_null.number_of_nodes() > 0:
+                G_null.remove_edges_from(nx.selfloop_edges(G_null))
                 null_reciprocity_list.append(nx.reciprocity(G_null))
         except Exception as e:
             tqdm.write(f"Warning: Could not process {os.path.basename(file_path)}. Error: {e}")

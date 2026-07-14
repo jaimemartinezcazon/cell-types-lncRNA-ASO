@@ -68,6 +68,9 @@ def load_and_analyze_components(edge_path):
         edge_list, 'source', 'target', create_using=nx.DiGraph()
     )
     
+    ## Eliminate self-loops
+    G.remove_edges_from(nx.selfloop_edges(G))
+
     print(f"Full network loaded: {G.number_of_nodes()} nodes, {G.number_of_edges()} edges.")
     
     # Analyze connectivity

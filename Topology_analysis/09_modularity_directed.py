@@ -39,6 +39,7 @@ OUTPUT_DATA_DIR.mkdir(parents=True, exist_ok=True)
 # GRN edge list path
 EDGE_LIST_PATH = INPUT_DATA_DIR / "edge_list_to_analyze.parquet"
 
+# Null models data path (updated for parquet)
 NULL_MODELS_DIR     = INPUT_DATA_DIR / "null_models"
 BOWTIE_DIR = INPUT_DATA_DIR / "bow_tie"
 OUTPUT_SIG_PATH = OUTPUT_DATA_DIR / "community_significance_directed.csv"
@@ -67,8 +68,15 @@ def load_network_and_detect_directed_communities(edge_path):
     """Loads the directed network and detects communities."""
     print("Loading directed network and detecting communities...")
     edge_list = pd.read_parquet(edge_path)
-    G = nx.from_pandas_edgelist(edge_list, source='source', target='target', create_using=nx.DiGraph())
+    G_full = nx.from_pandas_edgelist(edge_list, source='source', target='target', create_using=nx.DiGraph())
     
+    ## Only work with main WCC
+    giant_component_nodes = max(nx.weakly_connected_components(G_full), key=len)
+    G= G_full.subgraph(giant_component_nodes).copy()
+
+    ## Eliminate self-loops
+    G.remove_edges_from(nx.selfloop_edges(G))
+
     communities_list = nx.community.louvain_communities(G, seed=42)
     
     partition = {node: i for i, comm in enumerate(communities_list) for node in comm}
@@ -84,7 +92,11 @@ def process_single_null_model(args):
     """
     file_path, real_nodes_by_comm = args
     try:
-        G_null = nx.read_graphml(file_path, node_type=str)
+        # Load edge list from parquet and convert to directed networkx graph
+        edges = pd.read_parquet(file_path)
+        G_null = nx.from_pandas_edgelist(
+            edges, source='source', target='target', create_using=nx.DiGraph()
+        )
         
         # 1. Directed Modularity
         null_comms = nx.community.louvain_communities(G_null, seed=42)
@@ -121,9 +133,13 @@ def map_communities_to_bowtie(partition, bowtie_dir):
     print("\n--- MAPPING COMMUNITIES TO BOW-TIE COMPONENTS ---")
     bow_tie_sets = {}
     for comp in ['IN', 'SCC', 'OUT', 'OTHERS']:
-        filepath = os.path.join(bowtie_dir, f"{comp.lower()}_sector_nodes.csv")
+        # 1. Cambiamos la extensión buscando un .parquet
+        filepath = os.path.join(bowtie_dir, f"{comp.lower()}_sector_nodes.parquet")
+        
         if os.path.exists(filepath):
-            bow_tie_sets[comp] = set(pd.read_csv(filepath).iloc[:, 0].astype(str))
+            # 2. Usamos pd.read_parquet en lugar de read_csv
+            # iloc[:, 0] asegura que tomamos la primera columna sin importar su nombre ('Node')
+            bow_tie_sets[comp] = set(pd.read_parquet(filepath).iloc[:, 0].astype(str))
         else:
             bow_tie_sets[comp] = set()
 
@@ -140,12 +156,7 @@ def map_communities_to_bowtie(partition, bowtie_dir):
         result_row.update({f'% {comp}': (count / total_nodes) * 100 for comp, count in counts.items()})
         analysis_results.append(result_row)
         
-    results_df = pd.DataFrame(analysis_results).set_index('Community_ID')
-    print("\nDistribution of Communities across Bow-Tie Components (%):")
-    print(results_df.to_string(float_format="%.2f"))
-    
-    results_df.to_csv(BOWTIE_DIR)
-    print(f"\nBow-tie distribution report saved to '{BOWTIE_DIR}'")
+    return analysis_results
 
 
 # =============================================================================
@@ -158,7 +169,8 @@ if __name__ == "__main__":
     real_modularity = nx.community.modularity(G_main, communities_main)
     
     # 2. Analyze Null Models in Parallel
-    null_model_files = glob.glob(os.path.join(NULL_MODELS_DIR, "*.graphml"))
+    # Updated to search for .parquet files
+    null_model_files = glob.glob(os.path.join(NULL_MODELS_DIR, "*.parquet"))
     
     if not null_model_files:
         print(f"\nWarning: No null models found in {NULL_MODELS_DIR}. Skipping statistical significance tests.")
