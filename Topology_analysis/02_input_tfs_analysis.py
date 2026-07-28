@@ -32,7 +32,7 @@ OUTPUT_DATA_DIR.mkdir(parents=True, exist_ok=True)
 # GRN edge list path
 EDGE_LIST_PATH = INPUT_DATA_DIR / "edge_list_to_analyze.parquet"
 
-# Output paths for the filtered giant component data
+# Output paths for the TFs data
 OUTPUT_TFS_PATH = OUTPUT_DATA_DIR / "input_tfs.parquet"
 
 

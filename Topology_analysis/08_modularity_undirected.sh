@@ -2,9 +2,9 @@
 #SBATCH --job-name=GRN_Mod_Undirected       # Sets the job's name shown in the queue
 #SBATCH --output=logs/%x_%j.out	            # Writes the output to a given file
 #SBATCH --error=logs/%x_%j.err  	        # Writes the errors to a given file
-#SBATCH --time=24:00:00         			# If the job takes more time than specified, is remode from the queue
+#SBATCH --time=72:00:00         			# If the job takes more time than specified, is remode from the queue
 #SBATCH --ntasks=1              			# Number of tasks to run (= environment creation + [python scripts to run] + environment exportation )
-#SBATCH --mem=48G                			# Real Memory per node. In MB by default. Other optional unita are [K|M|G|T]
+#SBATCH --mem=64G                			# Real Memory per node. In MB by default. Other optional unita are [K|M|G|T]
 #SBATCH --nodes=1               			# Nodes to be allocated to this job
 #SBATCH -c 16       					    # Number of CPUs that will be used for each allocated node
 #SBATCH --partition="all"   			    # Partition from wich the nodes will be selected # #SBATCH --nodelist=cpu13

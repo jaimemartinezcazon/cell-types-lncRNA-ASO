@@ -39,7 +39,13 @@ NULL_MODELS_DIR     = INPUT_DATA_DIR / "null_models"
 
 # Limit the number of null models to process (useful for testing, set to None for all)
 MAX_NULL_MODELS = 1000
-NUM_CORES = max(1, mp.cpu_count() - 2)  # Leave a couple of cores free
+
+# Try with CPUs assigned by SLURM. If not use maximum 8 CPUs. 
+slurm_cpus = os.environ.get('SLURM_CPUS_PER_TASK')
+if slurm_cpus is not None:
+    NUM_CORES = int(slurm_cpus)
+else:
+    NUM_CORES = min(8, mp.cpu_count())
 
 # Map user-defined motif names to igraph / Davis-Leinhardt triad census codes.
 # igraph's TriadCensus object supports the same string keys as NetworkX

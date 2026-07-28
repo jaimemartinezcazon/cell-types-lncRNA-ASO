@@ -67,14 +67,14 @@ def load_network_and_annotations():
     G.remove_edges_from(nx.selfloop_edges(G))
 
     try:
-        candidates_path = INPUT_DATA_DIR / "Candidates_list.parquet"
+        candidates_path = INPUT_DATA_DIR / "candidates_list.parquet"
         candidates_genes = set(pd.read_parquet(candidates_path).iloc[:, 0].dropna().astype(str))
     except FileNotFoundError:
         print("Warning: Candidate list file not found. Skipping candidate analysis.")
         candidates_genes = set()
 
     try:
-        tfs_path = INPUT_DATA_DIR / "TFs_network.parquet"
+        tfs_path = INPUT_DATA_DIR / "input_tfs.parquet"
         tfs_genes = set(pd.read_parquet(tfs_path).iloc[:, 0].dropna().astype(str))
     except FileNotFoundError:
         print("Warning: TF list file not found. Skipping TF analysis.")

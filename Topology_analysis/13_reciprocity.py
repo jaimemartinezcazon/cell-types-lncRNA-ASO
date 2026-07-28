@@ -10,6 +10,7 @@ significance using a two-tailed empirical p-value.
 '''
 
 import os
+import glob
 import pandas as pd
 import numpy as np
 import networkx as nx
@@ -83,27 +84,32 @@ def load_real_network(filepath):
     return G_real
 
 
-def analyze_null_models_reciprocity(null_dir, num_models):
+def analyze_null_models_reciprocity(NULL_MODELS_DIR, N_NULL_MODELS):
     """Loads and analyzes the ensemble of null models to calculate reciprocity."""
-    print(f"\nAnalyzing up to {num_models} null models for reciprocity...")
+    print(f"\nAnalyzing up to {N_NULL_MODELS} null models for reciprocity...")
     null_reciprocity_list = []
     
-    for i in tqdm(range(num_models), desc="Analyzing Null Models"):
-        # Updated to search for .parquet files
-        file_path = os.path.join(null_dir, f"null_model_{str(i).zfill(4)}.parquet")
-        if not os.path.exists(file_path):
-            continue
-            
+    # Load files
+    null_files = glob.glob(os.path.join(NULL_MODELS_DIR, "*.parquet")) 
+    
+    if not null_files:
+        print(f"\nERROR: NULL MODELS NOT FOUND IN {NULL_MODELS_DIR}")
+        return null_reciprocity_list
+        
+    null_files = null_files[:N_NULL_MODELS]
+
+    for file_path in tqdm(null_files, desc="Analyzing Null Models"):
         try:
-            # Load edge list from parquet and convert to directed networkx graph
+            # Parquet files are read directly into pandas DataFrames
             edges = pd.read_parquet(file_path)
             G_null = nx.from_pandas_edgelist(
                 edges, source='source', target='target', create_using=nx.DiGraph()
             )
-            
-            if G_null.number_of_nodes() > 0:
-                G_null.remove_edges_from(nx.selfloop_edges(G_null))
-                null_reciprocity_list.append(nx.reciprocity(G_null))
+
+            ## Eliminate self-loops
+            G_null.remove_edges_from(nx.selfloop_edges(G_null))
+            null_reciprocity_list.append(nx.reciprocity(G_null))
+
         except Exception as e:
             tqdm.write(f"Warning: Could not process {os.path.basename(file_path)}. Error: {e}")
             

@@ -9,6 +9,7 @@ an ensemble of surrogate networks (null models). Includes exponential binning
 and power-law fitting for C(k) vs. k.
 '''
 
+import glob
 import os
 from pathlib import Path
 import numpy as np
@@ -122,11 +123,16 @@ def analyze_null_models():
     null_global_clustering = []
     null_ck_raw_data = {"all": defaultdict(list), "in": defaultdict(list), "out": defaultdict(list)}
     
-    for i in tqdm(range(N_NULL_MODELS)):
-        file_path = os.path.join(NULL_MODELS_DIR, f"null_model_{str(i).zfill(4)}.parquet")
-        if not os.path.exists(file_path):
-            continue
-            
+    # Load files
+    null_files = glob.glob(os.path.join(NULL_MODELS_DIR, "*.parquet")) 
+    
+    if not null_files:
+        print(f"\nERROR: NULL MODELS NOT FOUND IN {NULL_MODELS_DIR}")
+        return [], null_ck_raw_data
+        
+    null_files = null_files[:N_NULL_MODELS]
+
+    for file_path in tqdm(null_files, desc="Analyzing Null Models"):
         try:
             # Parquet files are read directly into pandas DataFrames
             edges = pd.read_parquet(file_path)

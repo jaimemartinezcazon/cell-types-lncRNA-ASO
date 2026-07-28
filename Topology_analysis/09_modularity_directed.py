@@ -44,8 +44,13 @@ NULL_MODELS_DIR     = INPUT_DATA_DIR / "null_models"
 BOWTIE_DIR = INPUT_DATA_DIR / "bow_tie"
 OUTPUT_SIG_PATH = OUTPUT_DATA_DIR / "community_significance_directed.csv"
 
-NUM_CORES = max(1, mp.cpu_count() - 2)
-
+# Try with CPUs assigned by SLURM. If not use maximum 8 CPUs. 
+slurm_cpus = os.environ.get('SLURM_CPUS_PER_TASK')
+if slurm_cpus is not None:
+    NUM_CORES = int(slurm_cpus)
+else:
+    NUM_CORES = min(8, mp.cpu_count())
+    
 #GENE_SET = [
 #    "", ""
 #]

@@ -45,13 +45,16 @@ NULL_MODELS_DIR     = INPUT_DATA_DIR / "null_models"
 BOWTIE_DIR = INPUT_DATA_DIR / "bow_tie"
 OUTPUT_SIG_PATH = OUTPUT_DATA_DIR / "community_significance_undirected.csv"
 
-NUM_CORES = max(1, mp.cpu_count() - 2)
-
+# Try with CPUs assigned by SLURM. If not use maximum 8 CPUs. 
+slurm_cpus = os.environ.get('SLURM_CPUS_PER_TASK')
+if slurm_cpus is not None:
+    NUM_CORES = int(slurm_cpus)
+else:
+    NUM_CORES = min(8, mp.cpu_count())
+    
 # Default candidates if CSV is not found
 GEN_SET = [
-    "YAL049C", "YBR208C", "YDL182W", "YFL014W", "YGR088W", "YGR180C", 
-    "YHL034C", "YJR096W", "YJR137C", "YKL001C", "YLR178C", "YML128C", 
-    "YMR105C", "YPL223C", "YPL226W"
+    "SOX2"
 ]
 
 # =============================================================================

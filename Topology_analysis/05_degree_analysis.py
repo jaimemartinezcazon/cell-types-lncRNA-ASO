@@ -128,7 +128,7 @@ def plot_global_degree_distributions(G, fit_powerlaw=False):
     _plot_dist(axes[0], degree_in, "In")
     _plot_dist(axes[1], degree_out, "Out")
     plt.tight_layout()
-    plt.savefig(FIG_DIR / "degree_distribution_plot_global")
+    plt.savefig(FIG_DIR / "degree_distribution_plot_global.pdf")
 
 
 def analyze_scc_properties(G):
@@ -171,7 +171,7 @@ def analyze_scc_properties(G):
     _plot_scc_bars(axes[0], f"SCC Global Connections (Top {top_n})", data['Global In'], data['Global Out'])
     _plot_scc_bars(axes[1], f"SCC Internal Connections (Top {top_n})", data['Internal In'], data['Internal Out'])
     plt.tight_layout()
-    plt.savefig(FIG_DIR / "SCC_connection_plot")
+    plt.savefig(FIG_DIR / "SCC_connection_plot.pdf")
 
 def analyze_bowtie_components(G, fit_powerlaw=False):
     """
@@ -218,7 +218,7 @@ def analyze_bowtie_components(G, fit_powerlaw=False):
         _plot_dist(axes[0], deg_in, "In-Degree Distribution")
         _plot_dist(axes[1], deg_out, "Out-Degree Distribution")
         plt.tight_layout(rect=[0, 0.03, 1, 0.95])
-        plt.savefig(FIG_DIR / f"degree_distribution_plot_{comp_name}")
+        plt.savefig(FIG_DIR / f"degree_distribution_plot_{comp_name}.pdf")
 
 # =============================================================================
 # MAIN EXECUTION

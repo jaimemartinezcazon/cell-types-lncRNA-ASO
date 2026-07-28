@@ -40,8 +40,13 @@ EDGE_LIST_PATH = INPUT_DATA_DIR / "edge_list_to_analyze.parquet"
 # Keeping the directory exactly as requested
 NULL_MODELS_DIR     = INPUT_DATA_DIR / "null_models"
 
-NUM_CORES = max(1, mp.cpu_count() - 2)
-
+# Try with CPUs assigned by SLURM. If not use maximum 8 CPUs. 
+slurm_cpus = os.environ.get('SLURM_CPUS_PER_TASK')
+if slurm_cpus is not None:
+    NUM_CORES = int(slurm_cpus)
+else:
+    NUM_CORES = min(8, mp.cpu_count())
+    
 # =============================================================================
 # UTILITY AND ANALYSIS FUNCTIONS
 # =============================================================================
